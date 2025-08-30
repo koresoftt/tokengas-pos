@@ -44,3 +44,36 @@ Thumbs.db
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+
+# Node / Angular
+node_modules/
+.angular/
+.ionic/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+
+# Builds web
+www/
+dist/
+
+# Capacitor Android (mantén el proyecto android/, ignora builds locales)
+android/.gradle/
+android/.idea/
+android/local.properties
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+
+# iOS (si no usas iOS, ignora builds; si sí lo usas, ajusta)
+ios/App/build/
+ios/Pods/
+
+# IDE
+.vscode/
+
+# Firmas/llaves (no subas claves!)
+*.keystore
+*.jks
+*.p12
+*.pem
