@@ -1,0 +1,7 @@
+{
+  "name": "tokengas-pos",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular-standalone"
+}

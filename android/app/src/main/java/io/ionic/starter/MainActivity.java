@@ -1,0 +1,153 @@
+package io.ionic.starter;
+
+
+import android.view.WindowManager;
+import android.content.pm.ActivityInfo;
+
+import android.os.Bundle;
+import android.content.pm.ActivityInfo;
+
+import com.getcapacitor.BridgeActivity;
+
+import android.nfc.NfcAdapter;
+import android.nfc.Tag;
+import android.nfc.tech.Ndef;
+import android.nfc.NdefMessage;
+import android.nfc.NdefRecord;
+import android.webkit.ValueCallback;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+public class MainActivity extends BridgeActivity {
+
+  private NfcAdapter nfcAdapter;
+
+@Override
+public void onCreate(Bundle savedInstanceState) {
+  super.onCreate(savedInstanceState);
+
+  // 1) Mantener pantalla encendida
+  getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+  // 2) Bloquear screenshots / grabaciones
+  getWindow().setFlags(
+    WindowManager.LayoutParams.FLAG_SECURE,
+    WindowManager.LayoutParams.FLAG_SECURE
+  );
+
+  nfcAdapter = NfcAdapter.getDefaultAdapter(this);
+}
+
+  @Override
+  public void onResume() {
+    super.onResume();
+    enableReaderMode();
+  }
+
+  @Override
+  public void onPause() {
+    super.onPause();
+    disableReaderMode();
+  }
+
+  private void enableReaderMode() {
+    if (nfcAdapter == null) return;
+
+    int flags =
+        NfcAdapter.FLAG_READER_NFC_A
+      | NfcAdapter.FLAG_READER_NFC_B
+      | NfcAdapter.FLAG_READER_NFC_F
+      | NfcAdapter.FLAG_READER_NFC_V
+      | NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK;
+
+    nfcAdapter.enableReaderMode(
+      this,
+      this::onTagDiscovered,
+      flags,
+      null
+    );
+  }
+
+  private void disableReaderMode() {
+    if (nfcAdapter == null) return;
+    nfcAdapter.disableReaderMode(this);
+  }
+
+  private void onTagDiscovered(Tag tag) {
+    try {
+      // UID
+      byte[] id = tag.getId();
+      String uidHex = bytesToHex(id);
+
+      // Tech list
+      String[] techs = tag.getTechList();
+      JSONArray techArr = new JSONArray();
+      for (String t : techs) {
+        int idx = t.lastIndexOf('.');
+        techArr.put(idx >= 0 ? t.substring(idx + 1) : t);
+      }
+
+      // NDEF (si hay)
+      JSONArray records = new JSONArray();
+      try {
+        Ndef ndef = Ndef.get(tag);
+        if (ndef != null) {
+          ndef.connect();
+          NdefMessage msg = ndef.getNdefMessage();
+          if (msg != null) {
+            for (NdefRecord r : msg.getRecords()) {
+              JSONObject rec = new JSONObject();
+              rec.put("tnf", r.getTnf());
+              rec.put("type", new String(r.getType()));
+              rec.put("payloadHex", bytesToHex(r.getPayload()));
+              String text = decodeNdefText(r);
+              if (text != null) rec.put("payloadText", text);
+              records.put(rec);
+            }
+          }
+          try { ndef.close(); } catch (Exception ignore) {}
+        }
+      } catch (Exception ignored) {}
+
+      // JSON final
+      JSONObject detail = new JSONObject();
+      detail.put("uid", uidHex);
+      detail.put("tech", techArr);
+      detail.put("records", records);
+
+      // Emitir a la WebView (no hace falta escapar porque insertamos JSON literal)
+      String js = "window.dispatchEvent(new CustomEvent('nfc:tag', { detail: " +
+                  detail.toString() + " }));";
+
+      runOnUiThread(() ->
+        getBridge().getWebView().evaluateJavascript(js, (ValueCallback<String>) null)
+      );
+
+    } catch (Exception ignored) {}
+  }
+
+  private static String bytesToHex(byte[] bytes) {
+    if (bytes == null) return "";
+    StringBuilder sb = new StringBuilder();
+    for (byte b : bytes) sb.append(String.format("%02X", b));
+    return sb.toString();
+  }
+
+  private static String decodeNdefText(NdefRecord record) {
+    try {
+      short tnf = record.getTnf();
+      byte[] type = record.getType();
+      if (tnf == NdefRecord.TNF_WELL_KNOWN && java.util.Arrays.equals(type, NdefRecord.RTD_TEXT)) {
+        byte[] payload = record.getPayload();
+        if (payload == null || payload.length == 0) return null;
+        int status = payload[0] & 0xFF;
+        int langLen = status & 0x3F;
+        int textStart = 1 + langLen;
+        int textLen = payload.length - textStart;
+        return new String(payload, textStart, textLen, java.nio.charset.StandardCharsets.UTF_8);
+      }
+    } catch (Exception ignored) {}
+    return null;
+  }
+}

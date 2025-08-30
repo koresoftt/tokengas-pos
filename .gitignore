@@ -1,0 +1,46 @@
+# --- Node / Ionic ---
+node_modules/
+www/
+dist/
+coverage/
+.tmp/
+.sass-cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Capacitor / Android ---
+android/.gradle/
+android/.idea/
+android/local.properties
+android/app/build/
+android/build/
+**/*.iml
+
+# No subas APKs ni keystores
+*.apk
+*.aab
+*.jks
+*.keystore
+*.keystore.properties
+
+# --- iOS (si lo agregas después) ---
+ios/App/build/
+ios/Pods/
+ios/*.xcworkspace
+ios/*.xcodeproj/project.xcworkspace/
+ios/DerivedData/
+
+# --- Entornos / secretos ---
+*.env
+*.env.*.local
+
+# --- SO / Editores ---
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json

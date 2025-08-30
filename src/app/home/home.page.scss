@@ -1,0 +1,37 @@
+
+
+#container strong {
+  font-size: 20px;
+  line-height: 26px;
+}
+
+#container p {
+  font-size: 16px;
+  line-height: 22px;
+
+  color: #8c8c8c;
+
+  margin: 0;
+}
+
+#container a {
+  text-decoration: none;
+}
+
+/* Alert claro y con tipografía más grande */
+:host ::ng-deep .tok-alert--big {
+  --background: #ffffff;
+  --ion-text-color: #111;
+}
+
+:host ::ng-deep .tok-alert--big .alert-message {
+  font-size: 1.15rem;   /* más grande */
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+:host ::ng-deep .tok-alert--big input.alert-input {
+  font-size: 1.3rem;    /* input grande */
+  text-align: center;
+  letter-spacing: .25em;
+}

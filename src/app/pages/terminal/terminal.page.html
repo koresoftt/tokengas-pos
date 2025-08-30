@@ -1,0 +1,60 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>TokenGas — ES-0001 · Bomba-03</ion-title>
+    <ion-buttons slot="end">
+      <ion-button fill="clear" id="btn-diagnostico">
+        <ion-icon slot="start" name="pulse-outline"></ion-icon>
+        Diagnóstico
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true">
+  <div class="terminal-container">
+    <h1 class="title">Acerca tu tarjeta o tag al lector</h1>
+
+<!-- Animación NFC con tus imágenes -->
+<div class="nfc-anim" aria-hidden="true">
+  <!-- Celular -->
+  <div class="phone-img"></div>
+
+  <!-- Ondas que salen del celular -->
+  <div class="wave w1"></div>
+  <div class="wave w2"></div>
+  <div class="wave w3"></div>
+
+  <!-- Tarjeta acercándose -->
+  <div class="card-img"></div>
+</div>
+    
+
+    <p class="hint">Mantén el tag a menos de 3&nbsp;cm del lector.</p>
+
+    <div class="actions">
+      <ion-button size="large" class="btn-primary">
+        <ion-icon slot="start" name="create-outline"></ion-icon>
+        Entrada manual
+      </ion-button>
+
+      <ion-button size="large" fill="outline" class="btn-secondary">
+        <ion-icon slot="start" name="qr-code-outline"></ion-icon>
+        Escanear QR
+      </ion-button>
+    </div>
+  </div>
+</ion-content>
+
+<ion-footer>
+  <div class="statusbar">
+    <ion-chip [color]="networkOk() ? 'success' : 'danger'">
+      <ion-icon name="wifi-outline"></ion-icon>
+      <ion-label>Red: {{ networkOk() ? 'OK' : 'Fallo' }}</ion-label>
+    </ion-chip>
+
+    <ion-chip [color]="printerName() ? 'success' : 'medium'">
+      <ion-icon name="print-outline"></ion-icon>
+      <ion-label>Impresora: {{ printerName() || 'No conectada' }}</ion-label>
+    </ion-chip>
+  </div>
+</ion-footer>

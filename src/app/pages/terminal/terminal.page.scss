@@ -1,0 +1,106 @@
+/* ===== Tokens mínimos ===== */
+:host {
+  --tg-primary: #0fa36b;
+  --tg-text: var(--ion-text-color, #111827);
+}
+
+/* ===== Layout ===== */
+.terminal-container {
+  max-width: 420px;
+  margin: 18px auto 24px;
+  padding: 16px;
+  text-align: center;
+}
+.title {
+  font-size: 28px;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--tg-text);
+  margin: 8px 0 12px;
+}
+.hint { color: var(--ion-color-medium-shade); margin: 6px 0 20px; }
+
+.actions {
+  display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+}
+.actions .btn-primary {
+  --background: var(--tg-primary);
+  --background-hover: color-mix(in oklab, var(--tg-primary), black 6%);
+  border-radius: 24px;
+}
+.actions .btn-secondary {
+  --border-color: var(--tg-primary);
+  --color: var(--tg-primary);
+  border-radius: 24px;
+}
+
+/* ===== Animación: CELULAR grande + tarjeta grande (sin tapar logo) ===== */
+.nfc-anim{
+  /* escenario más grande y responsivo */
+  --size: clamp(380px, 68vw, 600px);
+  position: relative;
+  width: var(--size);
+  height: var(--size);
+  margin: 8px auto 0;
+  filter: drop-shadow(0 12px 20px rgba(0,0,0,.18));
+}
+
+/* Celular (png con logo) — MUCHO más grande y centrado */
+.phone-img{
+  --phoneW: calc(var(--size) * 0.68);
+  --phoneH: calc(var(--size) * 1.12);
+  position: absolute; left: 50%; top: 50%;
+  width: var(--phoneW); height: var(--phoneH);
+  transform: translate(-50%, -50%);
+  background: url("/assets/brand/phone.png") center/contain no-repeat;
+  filter: drop-shadow(0 7px 16px rgba(0,0,0,.28));
+  pointer-events: none;
+}
+
+/* Ondas NFC: origen ligeramente a la derecha para que no tapen el logo */
+.wave{
+  position: absolute;
+  left: calc(50% + var(--size) * 0.14);  /* origen corrido a la derecha */
+  top: 50%;
+  --ring: calc(var(--size) * 0.30);
+  width: var(--ring); height: var(--ring);
+  margin-left: calc(var(--ring) * -0.5);
+  margin-top:  calc(var(--ring) * -0.5);
+  border: 2px solid #00e29b; border-radius: 50%;
+  opacity: .28; transform: scale(1);
+  animation: nfcPulse 2.6s ease-in-out infinite;
+}
+.w2{ animation-delay: .35s; }
+.w3{ animation-delay: .70s; }
+
+@keyframes nfcPulse{
+  0%   { opacity:.28; transform: scale(1); }
+  72%  { opacity:0;   transform: scale(2.7); }
+  100% { opacity:0;   transform: scale(2.7); }
+}
+
+/* Tarjeta — más grande y su trayectoria termina a la DERECHA del teléfono */
+.card-img{
+  --cardW: calc(var(--size) * 0.46);
+  --cardH: calc(var(--size) * 0.29);
+  position: absolute; left: 50%; top: 50%;
+  width: var(--cardW); height: var(--cardH);
+  background: url("/assets/brand/card.png") center/contain no-repeat;
+  border-radius: 12px;
+  z-index: 3; /* por encima de las ondas */
+  transform: translate(-50%, -50%);
+  animation: cardApproachSide 2.6s ease-in-out infinite;
+}
+
+/* La tarjeta cruza pero se detiene en el lateral derecho (no tapa el logo) */
+@keyframes cardApproachSide{
+  0%   { transform: translate(calc(-50% - 60%), -50%) rotate(-6deg); }
+  46%  { transform: translate(calc(-50% + 20%), -50%) rotate(-2deg); } /* posición final lateral */
+  54%  { transform: translate(calc(-50% + 20%), -50%) rotate(-2deg); }
+  100% { transform: translate(calc(-50% - 60%), -50%) rotate(-6deg); }
+}
+
+/* Menos movimiento si el usuario lo pide */
+@media (prefers-reduced-motion: reduce){
+  .wave, .card-img { animation: none; }
+}
