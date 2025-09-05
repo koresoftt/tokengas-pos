@@ -1,0 +1,20 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Lector NFC / QR</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+  <ion-button expand="block" (click)="leerNfc()">Leer NFC</ion-button>
+  <ion-button expand="block" (click)="leerQr()">Escanear QR</ion-button>
+
+  <ion-card *ngIf="ultimo">
+    <ion-card-header>
+      <ion-card-title>ID: {{ ultimo.id }}</ion-card-title>
+    </ion-card-header>
+    <ion-card-content>
+      <p><strong>Saldo simulado:</strong> {{ ultimo.saldo | currency:ultimo.moneda:'symbol-narrow':'1.2-2' }}</p>
+      <p><small>Actualizado: {{ ultimo.actualizadoA | date:'short' }}</small></p>
+    </ion-card-content>
+  </ion-card>
+</ion-content>

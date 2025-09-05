@@ -1,0 +1,315 @@
+import { BrowserMultiFormatReader } from '@zxing/browser';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { Component, NgZone, OnDestroy, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import {
+  IonHeader, IonToolbar, IonTitle, IonContent,
+  IonSpinner, IonList, IonItem, IonLabel, IonButton,
+  IonCard, IonCardHeader, IonCardTitle, IonCardContent,
+  IonText
+} from '@ionic/angular/standalone';
+
+import { IdReaderService } from '../../services/id-reader.service';
+import { Capacitor } from '@capacitor/core';
+
+type NfcRecord = { tnf: number; type: string; payloadHex: string; payloadText?: string; };
+type NfcDetail = { uid: string; tech: string[]; records: NfcRecord[]; };
+
+@Component({
+  selector: 'app-terminal',
+  standalone: true,
+  imports: [
+    CommonModule,
+    IonHeader, IonToolbar, IonTitle, IonContent,
+    IonSpinner, IonList, IonItem, IonLabel, IonButton,
+    IonCard, IonCardHeader, IonCardTitle, IonCardContent,
+    IonText
+  ],
+  styles: [`
+    ion-content { --background: #ffffff; }
+
+    .center {
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:16px; min-height:60vh; text-align:center;
+    }
+
+    .muted{opacity:.7}
+    .uid { font-size: 28px; font-weight: 700; letter-spacing: .5px; }
+    .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+
+    /* === Animación de escaneo (igual estilo NFC) === */
+    .scanner-wrap {
+      position: relative;
+      width: min(88vw, 320px);
+      aspect-ratio: 1 / 1;
+    }
+    .scanner-frame {
+      position: absolute; inset: 0;
+      border-radius: 16px;
+      box-shadow: inset 0 0 0 2px rgba(0,0,0,.08);
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(0,0,0,.03), rgba(0,0,0,.01));
+    }
+    .scanner-line {
+      position:absolute; left:0; right:0; height:2px;
+      background: rgba(16, 185, 129, .9); /* emerald */
+      box-shadow: 0 0 12px rgba(16,185,129,.6), 0 0 24px rgba(16,185,129,.35);
+      animation: scanline 1800ms linear infinite;
+    }
+    @keyframes scanline {
+      0% { top: 6% }
+      50% { top: 94% }
+      100% { top: 6% }
+    }
+    .corner { position:absolute; width:18px; height:18px; border:3px solid #10b981; }
+    .corner.tl { top:8px; left:8px; border-right:none; border-bottom:none; border-radius:12px 0 0 0; }
+    .corner.tr { top:8px; right:8px; border-left:none; border-bottom:none; border-radius:0 12px 0 0; }
+    .corner.bl { bottom:8px; left:8px; border-right:none; border-top:none; border-radius:0 0 0 12px; }
+    .corner.br { bottom:8px; right:8px; border-left:none; border-top:none; border-radius:0 0 12px 0; }
+
+    .pulse {
+      position:absolute; inset:-8px;
+      border-radius:20px;
+      animation: pulse 1400ms ease-in-out infinite;
+      box-shadow: 0 0 0 0 rgba(16,185,129,.35);
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(16,185,129,.35); }
+      70% { box-shadow: 0 0 0 18px rgba(16,185,129,0); }
+      100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+    }
+
+    /* Contenedor de video (fallback web) con overlay animado arriba */
+    .web-cam {
+      position: relative;
+      width: min(92vw, 420px);
+      aspect-ratio: 16/9;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+    }
+    .web-cam video {
+      width:100%; height:100%; object-fit: cover;
+    }
+    .overlay-center {
+      position:absolute; inset: 12px; display:block;
+    }
+  `],
+  template: `
+    <ion-header>
+      <ion-toolbar><ion-title>NFC / QR</ion-title></ion-toolbar>
+    </ion-header>
+
+    <ion-content class="ion-padding">
+      <p class="muted">Estado: <b>{{ scanning ? 'escaneando' : 'tag/código leído' }}</b></p>
+
+      <div class="center" *ngIf="scanning; else result">
+
+        <!-- Bloque de animación de “listo para escanear” -->
+        <div class="scanner-wrap">
+          <div class="scanner-frame">
+            <div class="scanner-line"></div>
+            <div class="corner tl"></div><div class="corner tr"></div>
+            <div class="corner bl"></div><div class="corner br"></div>
+          </div>
+          <div class="pulse"></div>
+        </div>
+
+        <div>
+          <h2>Acerca una etiqueta… o alinea el QR</h2>
+          <p class="muted">Reader Mode activo</p>
+        </div>
+
+        <ion-button [disabled]="qrBusy" color="success" (click)="leerQr()">
+          {{ qrBusy ? 'Abriendo cámara…' : 'Leer QR' }}
+        </ion-button>
+        <ion-spinner *ngIf="qrBusy" name="crescent"></ion-spinner>
+
+        <ion-text color="medium" *ngIf="qrMsg"><small>{{ qrMsg }}</small></ion-text>
+
+        <!-- Fallback web (solo en PWA/web) con la misma animación encima -->
+        <div class="web-cam" *ngIf="qrWeb">
+          <video id="qr-video" playsinline muted></video>
+          <div class="overlay-center">
+            <div class="scanner-frame">
+              <div class="scanner-line"></div>
+              <div class="corner tl"></div><div class="corner tr"></div>
+              <div class="corner bl"></div><div class="corner br"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <ng-template #result>
+        <ion-card>
+          <ion-card-header>
+            <ion-card-title>UID / ID leído</ion-card-title>
+          </ion-card-header>
+          <ion-card-content>
+            <div class="uid mono">{{ uid || '—' }}</div>
+          </ion-card-content>
+        </ion-card>
+
+        <div *ngIf="detail">
+          <p class="muted"><b>Tecnologías:</b> {{ detail.tech.join(', ') || '—' }}</p>
+
+          <ng-container *ngIf="detail.records?.length; else vacia">
+            <h3>Registros NDEF</h3>
+            <ion-list>
+              <ion-item *ngFor="let r of detail.records">
+                <ion-label>
+                  <h2>TNF {{ r.tnf }} / {{ r.type }}</h2>
+                  <p *ngIf="r.payloadText">Texto: {{ r.payloadText }}</p>
+                  <p class="mono">HEX: {{ r.payloadHex }}</p>
+                </ion-label>
+              </ion-item>
+            </ion-list>
+          </ng-container>
+          <ng-template #vacia><p><i>Etiqueta vacía (sin NDEF)</i></p></ng-template>
+        </div>
+
+        <ion-button expand="block" (click)="reset()">Seguir escaneando</ion-button>
+        <pre *ngIf="raw">{{ raw | json }}</pre>
+      </ng-template>
+    </ion-content>
+  `
+})
+export class TerminalPage implements OnInit, OnDestroy {
+  scanning = true;
+  uid = '';
+  detail?: NfcDetail;
+  raw: any;
+  private off?: () => void;
+
+  // Estado QR
+  qrBusy = false;
+  qrMsg = '';
+  qrWeb = false;
+  private zxing?: BrowserMultiFormatReader;
+
+  constructor(private zone: NgZone, private idReader: IdReaderService) {}
+
+  ngOnInit(): void {
+    const handler = (e: Event) => {
+      const ev = e as CustomEvent<NfcDetail>;
+      const data = ev.detail;
+      this.zone.run(async () => {
+        this.scanning = false;
+        this.uid = data?.uid || '';
+        this.detail = data;
+        this.raw = data;
+        try { await Haptics.impact({ style: ImpactStyle.Light }); } catch {}
+      });
+    };
+    window.addEventListener('nfc:tag', handler as EventListener);
+    this.off = () => window.removeEventListener('nfc:tag', handler as EventListener);
+  }
+
+  ngOnDestroy(): void {
+    if (this.off) this.off();
+    this.stopQrWeb();
+  }
+
+  reset(): void {
+    this.scanning = true;
+    this.uid = '';
+    this.detail = undefined;
+    this.raw = undefined;
+    this.qrBusy = false;
+    this.qrMsg = '';
+    this.stopQrWeb();
+  }
+
+  // === LECTOR QR (nativo; fallback web sólo en PWA) ===
+  async leerQr() {
+    if (this.qrBusy) return;
+    this.qrBusy = true;
+    this.qrMsg = 'abriendo cámara nativa…';
+    this.qrWeb = false;
+
+    try {
+      // Nativo
+      const id = await this.idReader.readFromQr();
+      if (id) {
+        this.onQrOk(this.normalize(id), 'QR(nativo)');
+        return;
+      }
+
+      // Sin lectura nativa
+      if (Capacitor.getPlatform() !== 'web') {
+        this.qrMsg = 'sin lectura nativa';
+        return;
+      }
+
+      // Fallback web (sólo PWA/web)
+      this.qrMsg = 'usando cámara del navegador…';
+      await this.startQrWeb();
+
+    } catch {
+      if (Capacitor.getPlatform() === 'web') {
+        this.qrMsg = 'nativo no disponible, usando cámara del navegador…';
+        await this.startQrWeb();
+      } else {
+        this.qrMsg = 'nativo no disponible';
+      }
+    } finally {
+      this.qrBusy = false;
+    }
+  }
+
+  // --- Fallback ZXing (web) ---
+  private async startQrWeb() {
+    try {
+      this.qrWeb = true;
+
+      if (!this.zxing) this.zxing = new BrowserMultiFormatReader();
+
+      const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+      const devId = devices?.[0]?.deviceId;
+
+      await this.zxing.decodeFromVideoDevice(
+        devId,
+        'qr-video',
+        async (result, err) => {
+          if (result?.getText) {
+            const id = this.normalize(result.getText());
+            this.onQrOk(id, 'QR(web)');
+            this.stopQrWeb();
+          }
+        }
+      );
+    } catch (e: any) {
+      console.error('[QR-web] error', e);
+      this.qrMsg = 'error en cámara web: ' + (e?.message || e);
+      this.stopQrWeb();
+    }
+  }
+
+  private stopQrWeb() {
+    try {
+      (this.zxing as any)?.stopContinuousDecode?.();
+      (this.zxing as any)?.stopAsyncDecode?.();
+      (this.zxing as any)?.stopStreams?.();
+      (this.zxing as any)?.reset?.();
+    } catch {}
+    this.qrWeb = false;
+    this.zxing = undefined;
+  }
+
+  // === Resultado exitoso (nativo o web) ===
+  private async onQrOk(id: string, via: 'QR(nativo)' | 'QR(web)') {
+    this.qrMsg = 'ok';
+    this.scanning = false;
+    this.uid = id;
+    this.detail = undefined; // QR no trae NDEF
+    this.raw = { via, id };
+    try { await Haptics.impact({ style: ImpactStyle.Medium }); } catch {}
+  }
+
+  // Normaliza textos tipo "No.- A12345" → "A12345"
+  private normalize(raw: string): string {
+    const t = (raw || '').trim();
+    const m = t.match(/([A-Za-z]\d{5,})/);
+    return m ? m[1] : t;
+  }
+}

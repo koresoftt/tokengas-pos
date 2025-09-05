@@ -4,12 +4,6 @@ export const routes: Routes = [
   {
     path: '',
     loadComponent: () =>
-      import('./home/home.page').then(m => m.HomePage),
-      
-  },
-  {
-    path: 'terminal',
-    loadComponent: () =>
       import('./pages/terminal/terminal.page').then(m => m.TerminalPage),
   },
   { path: '**', redirectTo: '' },
