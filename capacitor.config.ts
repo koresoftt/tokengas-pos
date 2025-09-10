@@ -1,9 +1,7 @@
-import type { CapacitorConfig } from '@capacitor/cli';
-
-const config: CapacitorConfig = {
-  appId: 'io.ionic.starter',
-  appName: 'tokengas-pos',
-  webDir: 'www'
+﻿const config = {
+  appId: 'mx.koresoft.tokengaspos',
+  appName: 'TokenGas POS',
+  webDir: 'www',
+  bundledWebRuntime: false
 };
-
 export default config;

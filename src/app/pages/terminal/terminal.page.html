@@ -1,60 +1,74 @@
 <ion-header>
   <ion-toolbar>
-    <ion-title>TokenGas — ES-0001 · Bomba-03</ion-title>
-    <ion-buttons slot="end">
-      <ion-button fill="clear" id="btn-diagnostico">
-        <ion-icon slot="start" name="pulse-outline"></ion-icon>
-        Diagnóstico
-      </ion-button>
-    </ion-buttons>
+    <ion-title>NFC / QR</ion-title>
   </ion-toolbar>
 </ion-header>
 
-<ion-content [fullscreen]="true">
-  <div class="terminal-container">
-    <h1 class="title">Acerca tu tarjeta o tag al lector</h1>
+<ion-content class="ion-padding terminal-content">
+  <p class="muted">
+    Estado: <b>{{ scanning ? 'escaneando' : 'tag/código leído' }}</b>
+  </p>
 
-<!-- Animación NFC con tus imágenes -->
-<div class="nfc-anim" aria-hidden="true">
-  <!-- Celular -->
-  <div class="phone-img"></div>
+  <!-- Vista de escaneo -->
+  <div class="center" *ngIf="scanning; else result">
+    <!-- Escena -->
+    <div class="nfc-scene" aria-hidden="true">
+      <img class="card-behind" [src]="cardArt" alt="Tarjeta" />
+      <div class="phone-wrap">
+        <img class="phone" [src]="phoneArt" alt="Teléfono NFC" />
+        <div class="waves"><span></span><span></span><span></span></div>
+      </div>
+    </div>
 
-  <!-- Ondas que salen del celular -->
-  <div class="wave w1"></div>
-  <div class="wave w2"></div>
-  <div class="wave w3"></div>
+    <div class="scan-ui">
+      <!-- Spinner SOLO cuando hay QR en progreso -->
+      <ion-spinner *ngIf="qrBusy" name="crescent" aria-label="Leyendo QR…"></ion-spinner>
 
-  <!-- Tarjeta acercándose -->
-  <div class="card-img"></div>
-</div>
-    
+      <div class="hints">
+        <h2>Acerca una etiqueta… o lee un QR</h2>
+      </div>
 
-    <p class="hint">Mantén el tag a menos de 3&nbsp;cm del lector.</p>
+      <div class="actions">
+        <ion-button
+          class="btn-primary big"
+          [disabled]="qrBusy"
+          (click)="leerQr()">
+          {{ qrBusy ? 'Leyendo…' : 'Leer QR' }}
+        </ion-button>
 
-    <div class="actions">
-      <ion-button size="large" class="btn-primary">
-        <ion-icon slot="start" name="create-outline"></ion-icon>
-        Entrada manual
-      </ion-button>
+        <ion-button
+          class="btn-secondary big"
+          fill="outline"
+          (click)="abrirEntradaManual()">
+          Entrada Manual
+        </ion-button>
+      </div>
 
-      <ion-button size="large" fill="outline" class="btn-secondary">
-        <ion-icon slot="start" name="qr-code-outline"></ion-icon>
-        Escanear QR
-      </ion-button>
+      <ion-text color="medium" *ngIf="qrMsg">
+        <small>{{ qrMsg }}</small>
+      </ion-text>
+
+      <!-- Fallback web (PWA/navegador) -->
+      <div *ngIf="qrWeb" class="qr-fallback">
+        <video id="qr-video" playsinline muted></video>
+        <p class="muted">Modo fallback (web) activo: apunta el código QR…</p>
+      </div>
     </div>
   </div>
+
+  <!-- Resultado -->
+  <ng-template #result>
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Track leído</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <div class="uid mono">{{ uid || '—' }}</div>
+      </ion-card-content>
+    </ion-card>
+
+    <ion-button expand="block" (click)="reset()">
+      Seguir escaneando
+    </ion-button>
+  </ng-template>
 </ion-content>
-
-<ion-footer>
-  <div class="statusbar">
-    <ion-chip [color]="networkOk() ? 'success' : 'danger'">
-      <ion-icon name="wifi-outline"></ion-icon>
-      <ion-label>Red: {{ networkOk() ? 'OK' : 'Fallo' }}</ion-label>
-    </ion-chip>
-
-    <ion-chip [color]="printerName() ? 'success' : 'medium'">
-      <ion-icon name="print-outline"></ion-icon>
-      <ion-label>Impresora: {{ printerName() || 'No conectada' }}</ion-label>
-    </ion-chip>
-  </div>
-</ion-footer>
