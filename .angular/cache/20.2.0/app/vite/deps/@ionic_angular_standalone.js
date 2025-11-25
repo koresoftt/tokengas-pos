@@ -1,7 +1,4 @@
 import {
-  isRTL
-} from "./chunk-IUXA2G6D.js";
-import {
   KEYBOARD_DID_OPEN
 } from "./chunk-G5UZVNUA.js";
 import {
@@ -25,10 +22,10 @@ import {
 } from "./chunk-L6ISKHKK.js";
 import {
   iosTransitionAnimation
-} from "./chunk-YLKBJ4UX.js";
+} from "./chunk-SLW6MJK4.js";
 import {
   mdTransitionAnimation
-} from "./chunk-DP5YLT3Y.js";
+} from "./chunk-QWEZNZKP.js";
 import {
   LIFECYCLE_DID_ENTER,
   LIFECYCLE_DID_LEAVE,
@@ -41,7 +38,7 @@ import {
   setPageHidden,
   transition,
   waitForMount
-} from "./chunk-QCSDJBOS.js";
+} from "./chunk-37A5YRCU.js";
 import {
   Build,
   Fragment,
@@ -57,6 +54,18 @@ import {
   setMode,
   writeTask
 } from "./chunk-GGFSAU2Q.js";
+import {
+  MENU_BACK_BUTTON_PRIORITY,
+  OVERLAY_BACK_BUTTON_PRIORITY,
+  shouldUseCloseWatcher
+} from "./chunk-EODYS5EQ.js";
+import {
+  doc,
+  win
+} from "./chunk-QEE7QVES.js";
+import {
+  isRTL
+} from "./chunk-IUXA2G6D.js";
 import {
   addEventListener,
   assert,
@@ -82,15 +91,6 @@ import {
   GESTURE_CONTROLLER,
   createGesture
 } from "./chunk-6U2AQA2C.js";
-import {
-  MENU_BACK_BUTTON_PRIORITY,
-  OVERLAY_BACK_BUTTON_PRIORITY,
-  shouldUseCloseWatcher
-} from "./chunk-EODYS5EQ.js";
-import {
-  doc,
-  win
-} from "./chunk-QEE7QVES.js";
 import {
   config,
   configFromSession,
@@ -15411,14 +15411,14 @@ var App = proxyCustomElement(class App2 extends H {
       rIC(() => __async(this, null, function* () {
         const isHybrid2 = isPlatform(window, "hybrid");
         if (!config.getBoolean("_testing")) {
-          import("./index7-C37DZI6N.js").then((module) => module.startTapClick(config));
+          import("./index7-D6UT5TLT.js").then((module) => module.startTapClick(config));
         }
         if (config.getBoolean("statusTap", isHybrid2)) {
           import("./status-tap-DQRX5DIC.js").then((module) => module.startStatusTap());
         }
         if (config.getBoolean("inputShims", needInputShims())) {
           const platform = isPlatform(window, "ios") ? "ios" : "android";
-          import("./input-shims-SXSUKIYA.js").then((module) => module.startInputShims(config, platform));
+          import("./input-shims-F7DHXN4G.js").then((module) => module.startInputShims(config, platform));
         }
         const hardwareBackButtonModule = yield import("./hardware-back-button-ONRIE2X4.js");
         const supportsHardwareBackButtonEvents = isHybrid2 || shouldUseCloseWatcher();

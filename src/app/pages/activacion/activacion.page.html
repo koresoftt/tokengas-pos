@@ -1,0 +1,112 @@
+<!-- src/app/pages/activacion/activacion.page.html -->
+<ion-content class="ion-padding">
+  <!-- Logo (triple-tap para alternar panel técnico) -->
+  <img src="assets/logo_tg.png"
+       alt="TokenGas"
+       class="logo"
+       (click)="onLogoTap()"
+       draggable="false" />
+
+  <!-- Panel técnico (solo si showVerifier() === true) -->
+  <ion-card class="card" *ngIf="showVerifier()">
+    <ion-card-header>
+      <ion-card-title>Verificación del dispositivo</ion-card-title>
+    </ion-card-header>
+
+    <ion-card-content>
+      <!-- DEVICE -->
+      <div class="block">
+        <ion-text color="medium">Identificador del equipo</ion-text>
+
+        <ng-container *ngIf="loadingDevice(); else deviceOk">
+          <div class="row">
+            <ion-spinner name="lines" aria-label="Cargando"></ion-spinner>
+            <span>Obteniendo ID…</span>
+          </div>
+        </ng-container>
+
+        <ng-template #deviceOk>
+          <ng-container *ngIf="!errorDevice(); else deviceErr">
+            <ion-list lines="none">
+              <ion-item>
+                <ion-label>
+                  <div class="label">Device ID</div>
+                  <div class="value mono">{{ deviceId() }}</div>
+                </ion-label>
+                <ion-button size="small" fill="clear" slot="end" (click)="copyId()">Copiar</ion-button>
+              </ion-item>
+              <ion-item>
+                <ion-label>
+                  <div class="label">Modelo / SO</div>
+                  <div class="value">{{ model() }} · {{ platform() }} {{ osVersion() }}</div>
+                </ion-label>
+              </ion-item>
+            </ion-list>
+          </ng-container>
+        </ng-template>
+
+        <ng-template #deviceErr>
+          <div class="error">
+            {{ errorDevice() }}
+            <ion-button size="small" fill="clear" (click)="retryDevice()">Reintentar</ion-button>
+          </div>
+        </ng-template>
+      </div>
+
+      <hr/>
+
+      <!-- GEO -->
+      <div class="block">
+        <ion-text color="medium">Ubicación</ion-text>
+
+        <ng-container *ngIf="loadingGeo(); else geoOk">
+          <div class="row">
+            <ion-spinner name="lines"></ion-spinner>
+            <span>Obteniendo ubicación…</span>
+          </div>
+        </ng-container>
+
+        <ng-template #geoOk>
+          <ng-container *ngIf="!errorGeo(); else geoErr">
+            <ion-list lines="none">
+              <ion-item>
+                <ion-label>
+                  <div class="label">Coordenadas</div>
+                  <div class="value mono">{{ lat() }}, {{ lon() }}</div>
+                </ion-label>
+              </ion-item>
+              <ion-item *ngIf="accuracy()">
+                <ion-label>
+                  <div class="label">Precisión</div>
+                  <div class="value">± {{ accuracy() | number:'1.0-0' }} m</div>
+                </ion-label>
+              </ion-item>
+            </ion-list>
+          </ng-container>
+        </ng-template>
+
+        <ng-template #geoErr>
+          <div class="error">
+            {{ errorGeo() }}
+            <ion-button size="small" fill="clear" (click)="retryGeo()">Reintentar</ion-button>
+          </div>
+        </ng-template>
+      </div>
+    </ion-card-content>
+  </ion-card>
+
+  <!-- Botón grande -->
+  <ion-button expand="block" size="large" class="btn-activar" (click)="onActivar()">
+    Activar
+  </ion-button>
+
+  <!-- Vista del JSON simulado (aparece después de pulsar Activar) -->
+  <ion-card *ngIf="showJson()" class="card">
+    <ion-card-header>
+      <ion-card-title>JSON a enviar (simulado)</ion-card-title>
+    </ion-card-header>
+    <ion-card-content>
+<pre class="json mono">{{ jsonStr() }}</pre>
+    </ion-card-content>
+  </ion-card>
+</ion-content>

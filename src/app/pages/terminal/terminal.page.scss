@@ -1,8 +1,8 @@
 /* ===== Fondo negro + texto claro ===== */
-:host, ion-content {
-  --ion-text-color: #f5f5f5;
-  --background: #000 !important;
-  background: #000 !important;
+ion-header, ion-toolbar {
+  --background: #000;
+  --color: #fff;
+  --border-color: transparent;
 }
 
 /* ===== Contenedor general ===== */
@@ -13,7 +13,7 @@
   justify-content: flex-start;            /* antes: center */
   gap: 16px;
   min-height: 60vh;
-  padding-top: max(16px, env(safe-area-inset-top)); /* baja el contenido bajo la status bar */
+  padding-top: max(20px, env(safe-area-inset-top));
   text-align: center;
 }
 
@@ -35,10 +35,7 @@
 /* Texto guía */
 .hints { margin-top: 50px; }
 .hints h2 {
-  font-size: 35px;
-  line-height: 1.25;
-  letter-spacing: .2px;
-  color: var(--ion-text-color);
+  font-size: clamp(22px, 5vw, 35px); /* en lugar de fijo 35px */
 }
 
 /* ===== Botones acción (grandes y lado a lado) ===== */
