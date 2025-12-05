@@ -1,0 +1,35 @@
+<ion-content class="ion-padding">
+  <div class="logo-wrapper">
+    <img src="assets/logo_tg.png" alt="TokenGas" class="logo" draggable="false" />
+  </div>
+
+  <ion-card>
+    <ion-card-header>
+      <ion-card-title>Esperando activación</ion-card-title>
+    </ion-card-header>
+
+    <ion-card-content>
+      <p>
+        Esta terminal aún no ha sido activada por el administrador.
+        Una vez activada, se configurará automáticamente.
+      </p>
+
+      <div class="center mt-3" *ngIf="loading">
+        <ion-spinner name="lines"></ion-spinner>
+        <span class="ms-2">Verificando estado…</span>
+      </div>
+
+      <ion-text color="danger" *ngIf="!loading && errorMsg">
+        <p class="mt-3">{{ errorMsg }}</p>
+      </ion-text>
+
+      <ion-button expand="block" (click)="check()" [disabled]="loading">
+        Reintentar ahora
+      </ion-button>
+
+      <ion-button expand="block" fill="outline" routerLink="/activacion" class="mt-2">
+        Enviar solicitud de activación
+      </ion-button>
+    </ion-card-content>
+  </ion-card>
+</ion-content>

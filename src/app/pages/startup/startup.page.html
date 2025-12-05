@@ -1,0 +1,12 @@
+<ion-content class="ion-padding">
+  <div class="startup-wrapper">
+    <img src="assets/logo_tg.png" alt="TokenGas" class="logo" />
+
+    <div class="status">
+      <ion-spinner name="lines" *ngIf="loading"></ion-spinner>
+      <ion-text color="medium">
+        <p>{{ message }}</p>
+      </ion-text>
+    </div>
+  </div>
+</ion-content>

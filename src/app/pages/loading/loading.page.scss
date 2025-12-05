@@ -1,0 +1,34 @@
+.loading-screen {
+  --background: #050816; // fondo oscuro tipo splash
+  color: #f4f4f4;
+}
+
+.center {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 1450ms ease-out, transform 1500ms ease-out;
+}
+
+.center.leaving {
+  opacity: 0;
+  transform: translateY(-30px); // antes -14, ahora sube más
+}
+
+
+.logo {
+  width: 180px;
+  max-width: 60%;
+}
+
+.msg {
+  font-size: 14px;
+  opacity: 0.8;
+  text-align: center;
+  padding: 0 32px;
+}

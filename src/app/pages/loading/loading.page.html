@@ -1,0 +1,15 @@
+<ion-content class="loading-screen">
+  <div class="center" [class.leaving]="leaving">
+    <img src="assets/logo_tg.png" class="logo" alt="TokenGas" />
+
+    <ion-spinner
+      *ngIf="checking"
+      name="crescent"
+      aria-label="Verificando dispositivo"
+    ></ion-spinner>
+
+    <p class="msg">
+      {{ statusMessage }}
+    </p>
+  </div>
+</ion-content>
