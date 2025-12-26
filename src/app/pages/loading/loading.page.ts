@@ -6,7 +6,9 @@ import {
   IonSpinner,
   IonButton,
 } from '@ionic/angular/standalone';
+
 import { TerminalStateService } from 'src/app/core/services/terminal-state.service';
+import { App } from '@capacitor/app';
 
 @Component({
   selector: 'app-loading',
@@ -17,117 +19,70 @@ import { TerminalStateService } from 'src/app/core/services/terminal-state.servi
 })
 export class LoadingPage implements OnInit {
   statusMessage = 'Verificando dispositivo…';
-  checking = true;     // muestra spinner
-  leaving = false;     // animación de salida
-  canRetry = false;    // muestra botón "Reintentar"
+  checking = true;
+  canRetry = false;
+
+  private appVersion = '1.0.0';
 
   constructor(
-    private terminalState: TerminalStateService,
+    private terminal: TerminalStateService,
     private router: Router
   ) {}
 
-  private sleep(ms: number) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  async ngOnInit(): Promise<void> {
+    try {
+      const info = await App.getInfo();
+      this.appVersion = info.version || '1.0.0';
+    } catch {
+      this.appVersion = '1.0.0';
+    }
+
+    await this.run();
   }
 
-  // Timeout para que no se quede colgado si la API no responde
-  private withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error(`Timeout de ${ms} ms esperando respuesta`));
-      }, ms);
-
-      promise
-        .then(value => {
-          clearTimeout(timer);
-          resolve(value);
-        })
-        .catch(err => {
-          clearTimeout(timer);
-          reject(err);
-        });
-    });
-  }
-
-  ngOnInit() {
-    this.runCheck();
-  }
-
-  async runCheck() {
-    // Estado inicial en cada intento
+  async run(): Promise<void> {
     this.checking = true;
-    this.leaving = false;
     this.canRetry = false;
     this.statusMessage = 'Verificando dispositivo…';
 
-    let target: '/terminal' | '/activacion' = '/activacion';
-
     try {
-      console.log('[LOAD] Iniciando verificación de estado…');
+      const result = await this.terminal.checkTerminalStatus(this.appVersion);
 
-const result = await this.withTimeout(
-  this.terminalState.checkTerminalStatus(),
-  8000
-);
+      if (result.status === 'ACTIVATED') {
+        this.statusMessage = 'Terminal activa. Iniciando POS…';
+        this.router.navigateByUrl('/terminal', { replaceUrl: true });
+        return;
+      }
 
-// Normalizamos siempre a string en mayúsculas
-const remoteStatus = String(result?.status || 'UNKNOWN').toUpperCase();
-const pendingLocal = await this.terminalState.isEnrollPending();
+      if (
+        result.status === 'PENDING' ||
+        result.status === 'ALREADY_REGISTERED'
+      ) {
+        this.statusMessage = 'Solicitud de activación en proceso…';
+        this.router.navigateByUrl('/activacion', { replaceUrl: true });
+        return;
+      }
 
-console.log('[LOAD] remoteStatus=', remoteStatus, 'pendingLocal=', pendingLocal);
+      if (result.status === 'NOT_REGISTERED') {
+        this.statusMessage = 'Terminal no activada.';
+        this.router.navigateByUrl('/activacion', { replaceUrl: true });
+        return;
+      }
 
-if (remoteStatus === 'ACTIVE') {
-  this.statusMessage = 'Terminal activa. Abriendo POS…';
-  target = '/terminal';
-
-} else if (remoteStatus === 'PENDING') {
-  this.statusMessage =
-    'Tienes una solicitud de activación en proceso. ' +
-    'En cuanto sea aprobada podrás usar la terminal.';
-  target = '/activacion';
-
-} else if (remoteStatus === 'NOT_REGISTERED') {
-  if (pendingLocal) {
-    this.statusMessage =
-      'Tienes una solicitud de activación en proceso. ' +
-      'Abriendo pantalla de activación…';
-  } else {
-    this.statusMessage =
-      'Terminal no activada. Preparando pantalla de activación…';
-  }
-  target = '/activacion';
-
-} else {
-  this.statusMessage =
-    'No se pudo determinar el estado de la terminal. Iremos a activación…';
-  target = '/activacion';
-}
-
-
-
-      // Flujo OK → apagamos spinner, animamos y navegamos
-      this.checking = false;
-      await this.sleep(2000);
-      this.leaving = true;
-      await this.sleep(450);
-
-      console.log('[LOAD] Navegando a:', target);
-      this.router.navigateByUrl(target, { replaceUrl: true });
-    } catch (err) {
-      console.error('[LOAD] Error verificando estado:', err);
-
-      // ❌ Hubo problema → detenemos spinner, mostramos mensaje y habilitamos reintento
-      this.checking = false;
-      this.leaving = false;
+      // Cualquier otro caso (ERROR)
       this.statusMessage =
-        'No fue posible verificar el dispositivo.\n' +
-        'Verifica que tienes conexión a internet e inténtalo nuevamente.';
+        'No se pudo determinar el estado de la terminal.';
+      this.router.navigateByUrl('/activacion', { replaceUrl: true });
+    } catch (err) {
+      console.error('[LOADING] Error verificando estado:', err);
+      this.checking = false;
       this.canRetry = true;
+      this.statusMessage =
+        'No fue posible verificar el dispositivo.\nRevisa tu conexión e intenta de nuevo.';
     }
   }
 
-  onRetry() {
-    console.log('[LOAD] Reintentando verificación…');
-    this.runCheck();
+  onRetry(): void {
+    this.run();
   }
 }

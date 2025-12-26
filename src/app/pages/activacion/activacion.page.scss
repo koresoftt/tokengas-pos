@@ -214,6 +214,19 @@ hr {
   --box-shadow: none;
 }
 
+.btn-activate-green {
+  --background: #0f3d2e;          // verde oscuro
+  --background-hover: #145a40;
+  --background-activated: #0b2e23;
+  --background-focused: #145a40;
+
+  --color: #ffffff;
+
+  --border-radius: 10px;
+  font-weight: 600;
+}
+
+
 /* Highlight tipo AdminLTE cuando se toca */
 .activate-btn::part(native) {
   /* para estados de focus/tap */

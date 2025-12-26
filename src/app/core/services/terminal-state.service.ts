@@ -1,292 +1,152 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Storage } from '@ionic/storage-angular';
-import { Device } from '@capacitor/device';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from 'src/environments/environment';
+import { DeviceSessionService } from './device-session.service';
+import { Device } from '@capacitor/device';
+import { Storage } from '@ionic/storage-angular';
 
-// ============= TIPOS Y INTERFACES =============
-
-export type TerminalStatus = 'ACTIVE' | 'PENDING' | 'NOT_REGISTERED' | 'UNKNOWN';
-
-export interface MerchantInfo {
-  id: string;
-  code: string;
-  name: string;
-}
-
-export interface SiteInfo {
-  id: string;
-  code: string;
-  name: string;
-}
-
-export interface GeoInfo {
-  lat: number;
-  lon: number;
-}
-
-export interface TerminalConfig {
-  deviceUid: string;
-  descripcion: string;
-  networkCode: string;
-  merchant: MerchantInfo;
-  site: SiteInfo;
-  modelo: string;
-  appVersion: string;
-  operatorId: string;
-  geo: GeoInfo;
-}
-
-export interface BffTerminalStatusResponse {
-  ok: boolean;
-  status: 'ACTIVE' | 'PENDING' | 'NOT_REGISTERED' | 'ERROR';
-  terminal?: {
-    device_uid: string;
-    descripcion: string;
-    networkCode: string;
-    merchant: MerchantInfo;
-    site: SiteInfo;
-    modelo: string;
-    appVersion: string;
-    operatorId: string;
-    geo: GeoInfo;
-  };
-  request?: {
-    id: number | string;
-    status: string;
-    last_step: string;
-    createdAt?: string;
-  };
-}
+export type TerminalStatus =
+  | 'ACTIVATED'
+  | 'PENDING'
+  | 'ALREADY_REGISTERED'
+  | 'NOT_REGISTERED'
+  | 'ERROR';
 
 export interface TerminalStatusResult {
   deviceUid: string;
   status: TerminalStatus;
-  config: TerminalConfig | null;
-  requestId?: string | number;
+  config: null;
 }
 
 export interface ActivationRequestPayload {
-  device_uid: string;
-  stationName: string;
+  app_version: string;
   modelo: string;
-  platform: string;
-  osVersion: string;
+  operator_id: string;
   geo_lat: number;
   geo_lon: number;
 }
 
 export interface ActivationRequestResponse {
   ok: boolean;
-  solicitudId?: string;
   message?: string;
 }
 
-// ============= SERVICIO =============
-
-@Injectable({
-  providedIn: 'root',
-})
+@Injectable({ providedIn: 'root' })
 export class TerminalStateService {
   private storageReady: Promise<void>;
-
+  private readonly STORAGE_PENDING = 'tg_enroll_pending';
   private readonly STORAGE_DEVICE_UID = 'tg_device_uid';
-  private readonly STORAGE_TERMINAL_CONFIG = 'tg_terminal_config';
-  private readonly STORAGE_ENROLL_PENDING = 'tg_enroll_pending';
 
   constructor(
     private http: HttpClient,
-    private storage: Storage
+    private storage: Storage,
+    private session: DeviceSessionService
   ) {
-    this.storageReady = this.storage.create().then(() => undefined);
+    this.storageReady = (this.storage as any)['create']().then(() => undefined);
   }
 
-  // ========== DEVICE UID ==========
   async getDeviceUid(): Promise<string> {
     await this.storageReady;
+    const cached = await (this.storage as any)['get'](this.STORAGE_DEVICE_UID);
+    if (cached) return cached;
 
-    const cached = await this.storage.get(this.STORAGE_DEVICE_UID);
-    if (cached) {
-      console.log('[DEVICE UID] desde storage =', cached);
-      return cached;
-    }
-
-    const infoId = await Device.getId();
-    console.log('[DEVICE UID] Device.getId().identifier =', infoId.identifier);
-
-    const info = await Device.getInfo();
-    console.log('[DEVICE INFO] uuid =', (info as any).uuid);
-    console.log('[DEVICE INFO] model =', info.model, 'platform =', info.platform);
-
-    const uid = infoId.identifier || 'UNKNOWN_DEVICE';
-
-    await this.storage.set(this.STORAGE_DEVICE_UID, uid);
-    console.log('[DEVICE UID] guardado en storage =', uid);
-
+    const uid = (await Device.getId()).identifier || 'UNKNOWN_DEVICE';
+    await (this.storage as any)['set'](this.STORAGE_DEVICE_UID, uid);
     return uid;
   }
 
-  // ========== ESTADO DE TERMINAL ==========
-  /**
-   * Verifica si la terminal está activa usando el BFF:
-   * GET {bffBaseUrl}/terminales/by-device/:device_uid/status
-   */
-  async checkTerminalStatus(): Promise<TerminalStatusResult> {
+  async checkTerminalStatus(appVersion: string): Promise<TerminalStatusResult> {
     await this.storageReady;
 
     const deviceUid = await this.getDeviceUid();
-    console.log('[TG] checkTerminalStatus → deviceUid', deviceUid);
+    const url = `${environment.baseUrl}/bff/enroll/status`;
 
-    const url = `${environment.bffBaseUrl}/terminales/by-device/${deviceUid}/status`;
-    console.log('[TG] checkTerminalStatus → URL', url);
+    const call = async () => {
+      const s = await this.session.ensure(appVersion);
+      const headers = new HttpHeaders({ 'X-Device-Session': s });
+      return await firstValueFrom(this.http.get<any>(url, { headers }));
+    };
 
     try {
-      const resp = await firstValueFrom(
-        this.http.get<BffTerminalStatusResponse>(url)
-      );
+      const r = await call();
 
-      console.log('[TG] checkTerminalStatus → resp', resp);
+      if (r?.ok) {
+        if (r.status === 'ACTIVATED') {
+          await this.clearPending();
+          return { deviceUid, status: 'ACTIVATED', config: null };
+        }
 
-      // --- TERMINAL ACTIVA ---
-      if (resp.ok && resp.status === 'ACTIVE' && resp.terminal) {
-        const t = resp.terminal;
+        if (r.status === 'PENDING' || r.status === 'ALREADY_REGISTERED') {
+          await this.markPending();
+          return { deviceUid, status: r.status, config: null };
+        }
 
-        const config: TerminalConfig = {
-          deviceUid: t.device_uid,
-          descripcion: t.descripcion,
-          networkCode: t.networkCode,
-          merchant: t.merchant,
-          site: t.site,
-          modelo: t.modelo,
-          appVersion: t.appVersion,
-          operatorId: t.operatorId,
-          geo: t.geo,
-        };
-
-        await this.saveTerminalConfig(config);
-        await this.clearEnrollPending();
-
-        return { deviceUid, status: 'ACTIVE', config };
+        if (r.status === 'NOT_REGISTERED') {
+          await this.clearPending();
+          return { deviceUid, status: 'NOT_REGISTERED', config: null };
+        }
       }
 
-      // --- SOLICITUD PENDIENTE ---
-      if (resp.ok && resp.status === 'PENDING' && resp.request) {
-        console.log('[TG] checkTerminalStatus → solicitud PENDING', resp.request);
-        await this.markEnrollPending();
-
-        return {
-          deviceUid,
-          status: 'PENDING',
-          config: null,
-          requestId: resp.request.id,
-        };
+      return { deviceUid, status: 'ERROR', config: null };
+    } catch (e: any) {
+      if (e?.status === 401) {
+        await this.session.clear();
+        return this.checkTerminalStatus(appVersion); // re-login + retry
       }
-
-      // Si la respuesta OK no es ACTIVE ni PENDING, lo tomamos como UNKNOWN
-      return { deviceUid, status: 'UNKNOWN', config: null };
-
-    } catch (err: any) {
-      console.error('[TG] checkTerminalStatus → ERROR', err);
-
-      // Error de red / TLS / sin conexión
-      if (err.status === 0) {
-        return { deviceUid, status: 'UNKNOWN', config: null };
-      }
-
-      // Cualquier 404 del BFF se interpreta como NO REGISTRADA
-      if (err.status === 404) {
-        await this.clearEnrollPending();
-        return { deviceUid, status: 'NOT_REGISTERED', config: null };
-      }
-
-      return { deviceUid, status: 'UNKNOWN', config: null };
+      return { deviceUid, status: 'ERROR', config: null };
     }
   }
 
-  // ========== STORAGE CONFIG ==========
-  async saveTerminalConfig(config: TerminalConfig): Promise<void> {
-    await this.storageReady;
-    await this.storage.set(this.STORAGE_TERMINAL_CONFIG, config);
+    async createActivationRequest(payload: ActivationRequestPayload): Promise<ActivationRequestResponse> {
+    const url = `${environment.baseUrl}/bff/enroll/request`;
+
+    const call = async () => {
+      const s = await this.session.ensure(payload.app_version);
+      const headers = new HttpHeaders({ 'X-Device-Session': s });
+      return await firstValueFrom(this.http.post<any>(url, payload, { headers }));
+    };
+
+    try {
+      const r = await call();
+      if (r?.ok) {
+        await this.markPending();
+        return { ok: true, message: r.message };
+      }
+      return { ok: false, message: r?.message || 'Solicitud rechazada.' };
+    } catch (e: any) {
+      console.error('[ENROLL][REQUEST] error', {
+        url,
+        status: e?.status,
+        error: e?.error,
+        message: e?.message,
+      });
+
+      if (e?.status === 401) {
+        await this.session.clear();
+        return this.createActivationRequest(payload);
+      }
+      if (e?.status === 409) {
+        await this.markPending();
+        return { ok: false, message: 'Ya existe una solicitud registrada.' };
+      }
+      return { ok: false, message: e?.error?.message || 'Error al crear solicitud.' };
+    }
   }
 
-  async getTerminalConfig(): Promise<TerminalConfig | null> {
+
+  async markPending() {
     await this.storageReady;
-    return (await this.storage.get(this.STORAGE_TERMINAL_CONFIG)) || null;
+    await (this.storage as any)['set'](this.STORAGE_PENDING, true);
   }
 
-  async clearTerminalData(): Promise<void> {
+  async clearPending() {
     await this.storageReady;
-    await this.storage.remove(this.STORAGE_TERMINAL_CONFIG);
-    await this.storage.remove(this.STORAGE_DEVICE_UID);
-    await this.storage.remove(this.STORAGE_ENROLL_PENDING);
-  }
-
-  // ========== BANDERA DE SOLICITUD PENDIENTE ==========
-  async markEnrollPending(): Promise<void> {
-    await this.storageReady;
-    await this.storage.set(this.STORAGE_ENROLL_PENDING, true);
-  }
-
-  async clearEnrollPending(): Promise<void> {
-    await this.storageReady;
-    await this.storage.remove(this.STORAGE_ENROLL_PENDING);
+    await (this.storage as any)['remove'](this.STORAGE_PENDING);
   }
 
   async isEnrollPending(): Promise<boolean> {
     await this.storageReady;
-    const v = await this.storage.get(this.STORAGE_ENROLL_PENDING);
-    return !!v;
-  }
-
-  // ========== CREAR SOLICITUD DE ACTIVACIÓN ==========
-  /**
-   * Envía la solicitud de enroll al BFF:
-   * POST {bffBaseUrl}/enroll/request
-   */
-  async createActivationRequest(
-    payload: ActivationRequestPayload
-  ): Promise<ActivationRequestResponse> {
-    const url = `${environment.bffBaseUrl}/enroll/request`;
-
-    try {
-      const resp = await firstValueFrom(
-        this.http.post<ActivationRequestResponse>(url, payload)
-      );
-
-      // Si la API dice ok=true, marcamos que hay solicitud pendiente
-      if (resp.ok) {
-        await this.markEnrollPending();
-      }
-
-      return resp;
-    } catch (err: any) {
-      console.error('[ENROLL] Error creando solicitud:', err);
-
-      // Caso especial: 409 device_already_registered
-      if (err.status === 409 && err.error?.detail) {
-        try {
-          const detail = JSON.parse(err.error.detail);
-
-          if (detail.error === 'device_already_registered') {
-            await this.markEnrollPending();
-
-            return {
-              ok: false,
-              message:
-                detail.message ||
-                'Ya existe una solicitud registrada para este dispositivo.',
-            };
-          }
-        } catch {
-          // ignore parse error
-        }
-      }
-
-      return {
-        ok: false,
-        message: 'No se pudo crear la solicitud de activación.',
-      };
-    }
+    return !!(await (this.storage as any)['get'](this.STORAGE_PENDING));
   }
 }

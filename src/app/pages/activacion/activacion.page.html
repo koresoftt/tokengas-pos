@@ -121,13 +121,14 @@
     </ion-card>
 
     <!-- Botón principal de Activar -->
-    <ion-button
-      class="activate-btn"
-      expand="block"
-      color="primary"
-      (click)="onActivateClick()"
-      [disabled]="sending() || activationRequested()"
-    >
+<ion-button
+  class="activate-btn btn-activate-green"
+  expand="block"
+  (click)="onActivateClick()"
+  [disabled]="sending() || activationRequested()"
+>
+
+
       <ng-container *ngIf="!sending(); else sendingTpl">
         <!-- Texto según estado -->
         <ng-container [ngSwitch]="activationStatus()">

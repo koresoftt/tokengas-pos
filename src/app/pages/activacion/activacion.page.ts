@@ -2,6 +2,7 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
+import { App } from '@capacitor/app';
 
 import {
   IonContent,
@@ -86,6 +87,9 @@ export class ActivacionPage implements OnInit {
   activationStatus = signal<ActivationUiStatus>('IDLE');
   activationMessage = signal<string | null>(null);
 
+  // --- App Version ---
+  private appVersion = signal<string>('1.0.0');
+
   // --- Triple tap ---
   private tapCount = 0;
   private lastTapTime = 0;
@@ -100,7 +104,6 @@ export class ActivacionPage implements OnInit {
     private router: Router
   ) {}
 
-  // (Opcional, por si luego quieres usarlo en otros lados)
   get canActivate(): boolean {
     return (
       !!this.deviceId() &&
@@ -111,15 +114,28 @@ export class ActivacionPage implements OnInit {
     );
   }
 
-  // ⚠️ ngOnInit ya no es async para evitar errores con OnInit
   ngOnInit(): void {
     this.initialize();
   }
 
   private async initialize() {
+    await this.loadAppVersion();
     await this.initDevice();
     await this.initGeo();
     await this.restoreActivationState();
+  }
+
+  private async loadAppVersion() {
+    try {
+      const info = await App.getInfo();
+      this.appVersion.set(info.version || '1.0.0');
+    } catch {
+      this.appVersion.set('1.0.0');
+    }
+  }
+
+  private getAppVersionSafe(): string {
+    return this.appVersion() || '1.0.0';
   }
 
   // === Device ===
@@ -129,7 +145,7 @@ export class ActivacionPage implements OnInit {
       this.errorDevice.set(null);
 
       const info = await Device.getInfo();
-      const uid = await this.terminalState.getDeviceUid(); // 👈 mismo UID que usa el BFF
+      const uid = await this.terminalState.getDeviceUid(); // solo para mostrar/copy en panel técnico
 
       this.deviceId.set(uid);
       this.model.set(info.model || '');
@@ -194,49 +210,49 @@ export class ActivacionPage implements OnInit {
   }
 
   private async restoreActivationState() {
-  try {
-    const result = await this.terminalState.checkTerminalStatus();
-
-    if (result.status === 'ACTIVE' && result.config) {
-      await this.showToast(
-        'Terminal activa. Cargando menú principal…',
-        'success'
+    try {
+      const result = await this.terminalState.checkTerminalStatus(
+        this.getAppVersionSafe()
       );
-      this.router.navigateByUrl('/terminal', { replaceUrl: true });
-      return;
-    }
 
-    const pending = await this.terminalState.isEnrollPending();
+      const isActivated = result.status === 'ACTIVATED';
 
-    // 👉 OPCIÓN: si el backend dice NOT_REGISTERED, limpiamos pending local
-    if (result.status === 'NOT_REGISTERED' && pending) {
-      await this.terminalState.clearEnrollPending();
-    }
+      if (isActivated) {
+        await this.showToast('Terminal activa. Cargando menú principal…', 'success');
+        this.router.navigateByUrl('/terminal', { replaceUrl: true });
+        return;
+      }
 
-    const finalPending =
-      result.status !== 'ACTIVE' ? await this.terminalState.isEnrollPending() : false;
+      const pendingLocal = await this.terminalState.isEnrollPending();
 
-    if (finalPending) {
-      this.activationRequested.set(true);
-      this.activationStatus.set('PENDING');
+      // Si backend dice NOT_REGISTERED, limpiamos bandera local
+      if (result.status === 'NOT_REGISTERED' && pendingLocal) {
+        await this.terminalState.clearPending();
+      }
+
+      // Releer bandera final (después del posible clear)
+      const finalPending = await this.terminalState.isEnrollPending();
+
+      if (finalPending) {
+        this.activationRequested.set(true);
+        this.activationStatus.set('PENDING');
+        this.activationMessage.set(
+          'Tu solicitud de activación está en proceso. ' +
+            'Cuando el administrador la apruebe, podrás usar esta terminal.'
+        );
+      } else {
+        this.activationRequested.set(false);
+        this.activationStatus.set('IDLE');
+        this.activationMessage.set(null);
+      }
+    } catch (err) {
+      console.error('[ACTIVACION] Error restaurando estado:', err);
+      this.activationStatus.set('ERROR');
       this.activationMessage.set(
-        'Tu solicitud de activación está en proceso. ' +
-          'Cuando el administrador la apruebe, podrás usar esta terminal.'
+        'No se pudo verificar el estado de la terminal. Revisa tu conexión e intenta de nuevo.'
       );
-    } else {
-      this.activationRequested.set(false);
-      this.activationStatus.set('IDLE');
-      this.activationMessage.set(null);
     }
-  } catch (err) {
-    console.error('[ACTIVACION] Error restaurando estado:', err);
-    this.activationStatus.set('ERROR');
-    this.activationMessage.set(
-      'No se pudo verificar el estado de la terminal. Revisa tu conexión e intenta de nuevo.'
-    );
   }
-}
-
 
   // === Triple tap logo ===
   onLogoTap() {
@@ -253,16 +269,8 @@ export class ActivacionPage implements OnInit {
 
   // === Botón Activar ===
   async onActivateClick() {
-    console.log('[ACTIVACION] CLICK botón Activar', {
-      deviceId: this.deviceId(),
-      lat: this.lat(),
-      lon: this.lon(),
-      loadingDevice: this.loadingDevice(),
-      loadingGeo: this.loadingGeo(),
-      activationRequested: this.activationRequested(),
-    });
+      console.log('[ACTIVACION] CLICK botón Activar');
 
-    // Si ya hay solicitud, no dejar spamear
     if (this.activationRequested()) {
       this.showToast(
         'Esta terminal ya tiene una solicitud registrada. Espera la activación.',
@@ -274,19 +282,20 @@ export class ActivacionPage implements OnInit {
     const ready = await this.ensureData();
     if (!ready) {
       this.showToast(
-        'Necesitamos ID y ubicación para activar. Revisa permisos/GPS.'
+        'Necesitamos ubicación para activar. Revisa permisos/GPS.',
+        'warning'
       );
       return;
     }
 
     const alert = await this.alertCtrl.create({
       header: 'Activar terminal',
-      message: 'Ingresa el nombre de la estación donde se usará esta terminal.',
+      message: 'Ingresa el nombre/código del operador (ej. HUMAYA, VALLE ALTO…).',
       inputs: [
         {
-          name: 'stationName',
+          name: 'operatorId',
           type: 'text',
-          placeholder: 'Ej. HUMAYA, VALLE ALTO…',
+          placeholder: 'Ej. HUMAYA',
         },
       ],
       buttons: [
@@ -297,32 +306,28 @@ export class ActivacionPage implements OnInit {
 
     await alert.present();
     const { data, role } = await alert.onDidDismiss();
-
     if (role !== 'confirm') return;
 
-    const stationName: string = (data?.values?.stationName || '').trim();
-    if (!stationName) {
-      this.showToast('Debes capturar el nombre de la estación.');
+    const operatorId: string = (data?.values?.operatorId || '').trim();
+    if (!operatorId) {
+      this.showToast('Debes capturar el operador.', 'warning');
       return;
     }
 
-    await this.sendActivationRequest(stationName);
+    await this.sendActivationRequest(operatorId);
   }
 
-  // === Enviar solicitud vía BFF, pero sin cambiar de pantalla ===
-  private async sendActivationRequest(stationName: string) {
-    const deviceUid = this.deviceId();
+  // === Enviar solicitud vía BFF ===
+  private async sendActivationRequest(operatorId: string) {
     const payload: ActivationRequestPayload = {
-      device_uid: deviceUid,
-      stationName,
+      app_version: this.getAppVersionSafe(),
       modelo: this.model() || 'UNKNOWN',
-      platform: this.platform() || 'unknown',
-      osVersion: this.osVersion() || '1.0.0',
+      operator_id: operatorId,
       geo_lat: this.lat() ?? 0,
       geo_lon: this.lon() ?? 0,
     };
 
-    // Debug: ver JSON que se envía
+    // Debug JSON
     this.jsonStr.set(JSON.stringify(payload, null, 2));
     this.showJson.set(true);
 
@@ -336,34 +341,35 @@ export class ActivacionPage implements OnInit {
       const resp = await this.terminalState.createActivationRequest(payload);
 
       if (resp.ok) {
-        // ✅ Nueva solicitud creada
         this.activationRequested.set(true);
         this.activationStatus.set('PENDING');
         this.activationMessage.set(
           'Solicitud enviada. En cuanto el administrador la apruebe, esta terminal quedará lista.'
         );
-
         await this.showToast('Solicitud enviada correctamente.', 'success');
       } else {
-        // Respuesta ok=false desde el BFF
-        this.activationStatus.set('ERROR');
-        this.activationMessage.set(
-          resp.message ||
-            'No se pudo crear la solicitud. Revisa la conexión e intenta de nuevo.'
-        );
-        await this.showToast(this.activationMessage()!, 'danger');
+        // Si viene 409, el servicio ya marca pending, así que reflejamos PENDING
+        const pending = await this.terminalState.isEnrollPending();
+        if (pending) {
+          this.activationRequested.set(true);
+          this.activationStatus.set('PENDING');
+          this.activationMessage.set(
+            resp.message ||
+              'Ya existe una solicitud registrada. Espera la activación.'
+          );
+          await this.showToast(this.activationMessage()!, 'warning');
+        } else {
+          this.activationStatus.set('ERROR');
+          this.activationMessage.set(
+            resp.message ||
+              'No se pudo crear la solicitud. Revisa la conexión e intenta de nuevo.'
+          );
+          await this.showToast(this.activationMessage()!, 'danger');
+        }
       }
     } catch (err: any) {
       console.error('Error creando solicitud de activación:', err);
-
-      let msg = 'Error al enviar la solicitud.';
-      if (err.status !== undefined) {
-        msg += ` (HTTP ${err.status})`;
-      }
-      if (err.error?.message) {
-        msg += `: ${err.error.message}`;
-      }
-
+      const msg = 'Error al enviar la solicitud.';
       this.activationStatus.set('ERROR');
       this.activationMessage.set(msg);
       await this.showToast(msg, 'danger');
@@ -371,13 +377,11 @@ export class ActivacionPage implements OnInit {
       this.sending.set(false);
       try {
         await loading.dismiss();
-      } catch {
-        /* noop */
-      }
+      } catch {}
     }
   }
 
-  // === Botón "Revisar estado" (en esta misma pantalla) ===
+  // === Botón "Revisar estado" ===
   async onCheckStatusClick() {
     const loading = await this.loadingCtrl.create({
       message: 'Revisando estado de activación…',
@@ -385,68 +389,46 @@ export class ActivacionPage implements OnInit {
     await loading.present();
 
     try {
-      const result = await this.terminalState.checkTerminalStatus();
+      const result = await this.terminalState.checkTerminalStatus(
+        this.getAppVersionSafe()
+      );
       const pending = await this.terminalState.isEnrollPending();
 
-      console.log('[ACTIVACION] check status', { result, pending });
-
-      if (result.status === 'ACTIVE') {
-        // ✅ Ya está activa: limpiamos pending y vamos al menú
-        await this.terminalState.clearEnrollPending();
-
-        await this.showToast(
-          'Terminal activada. Cargando menú principal…',
-          'success'
-        );
+      if (result.status === 'ACTIVATED') {
+        await this.terminalState.clearPending();
+        await this.showToast('Terminal activada. Cargando menú principal…', 'success');
         await this.router.navigateByUrl('/terminal', { replaceUrl: true });
         return;
       }
 
-      if (result.status === 'NOT_REGISTERED') {
-        if (pending) {
-          // 🔄 Tenemos solicitud pendiente localmente,
-          // pero el backend todavía no refleja la terminal como "ACTIVE".
-          this.activationRequested.set(true);
-          this.activationStatus.set('PENDING');
-          this.activationMessage.set(
-            'Tu solicitud de activación sigue en proceso. ' +
-              'Aún no aparece como activada en el sistema.'
-          );
-
-          await this.showToast(
-            'La solicitud sigue en proceso. Intenta de nuevo más tarde.',
-            'warning'
-          );
-        } else {
-          // ❌ No hay pending en storage y el backend tampoco ve terminal
-          this.activationRequested.set(false);
-          this.activationStatus.set('IDLE');
-          this.activationMessage.set(
-            'No hay solicitud registrada para este dispositivo. Vuelve a enviar la activación.'
-          );
-          await this.showToast('No hay solicitud registrada aún.', 'warning');
-        }
-        return;
+      if (pending) {
+        this.activationRequested.set(true);
+        this.activationStatus.set('PENDING');
+        this.activationMessage.set(
+          'Tu solicitud de activación sigue en proceso. ' +
+            'Intenta de nuevo más tarde.'
+        );
+        await this.showToast('La solicitud sigue en proceso.', 'warning');
+      } else {
+        this.activationRequested.set(false);
+        this.activationStatus.set('IDLE');
+        this.activationMessage.set(
+          'No hay solicitud registrada para este dispositivo. Vuelve a enviar la activación.'
+        );
+        await this.showToast('No hay solicitud registrada aún.', 'warning');
       }
-
-      // Otros estados que puedas agregar en el futuro (BLOCKED, etc.)
-      await this.showToast(
-        'La terminal todavía no aparece como activada. Intenta de nuevo en unos minutos.',
-        'warning'
-      );
     } catch (err) {
       console.error('[ACTIVACION] Error revisando estado:', err);
-      await this.showToast(
-        'Error al consultar el estado. Revisa la conexión.',
-        'danger'
-      );
+      await this.showToast('Error al consultar el estado. Revisa la conexión.', 'danger');
     } finally {
-      await loading.dismiss();
+      try {
+        await loading.dismiss();
+      } catch {}
     }
   }
 
   async resetStorage() {
-    await this.terminalState.clearTerminalData();
+    await this.terminalState.clearPending();
     window.location.reload();
   }
 
