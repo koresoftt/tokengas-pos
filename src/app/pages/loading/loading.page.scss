@@ -1,5 +1,5 @@
 .loading-screen {
-  --background: #050816; // fondo oscuro tipo splash
+  --background: #050816; /* fondo oscuro tipo splash */
   color: #f4f4f4;
 }
 
@@ -17,9 +17,8 @@
 
 .center.leaving {
   opacity: 0;
-  transform: translateY(-30px); // antes -14, ahora sube más
+  transform: translateY(-30px); /* antes -14, ahora sube más */
 }
-
 
 .logo {
   width: 180px;
@@ -31,4 +30,9 @@
   opacity: 0.8;
   text-align: center;
   padding: 0 32px;
+}
+
+ion-button {
+  width: 80%;
+  max-width: 260px;
 }

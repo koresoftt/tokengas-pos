@@ -2,6 +2,7 @@
   <div class="center" [class.leaving]="leaving">
     <img src="assets/logo_tg.png" class="logo" alt="TokenGas" />
 
+    <!-- Spinner solo mientras se está verificando -->
     <ion-spinner
       *ngIf="checking"
       name="crescent"
@@ -11,5 +12,14 @@
     <p class="msg">
       {{ statusMessage }}
     </p>
+
+    <!-- Botón de reintento solo si hubo error -->
+    <ion-button
+      expand="block"
+      *ngIf="!checking && canRetry"
+      (click)="onRetry()"
+    >
+      Reintentar
+    </ion-button>
   </div>
 </ion-content>

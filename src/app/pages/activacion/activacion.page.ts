@@ -100,6 +100,7 @@ export class ActivacionPage implements OnInit {
     private router: Router
   ) {}
 
+  // (Opcional, por si luego quieres usarlo en otros lados)
   get canActivate(): boolean {
     return (
       !!this.deviceId() &&
@@ -110,7 +111,12 @@ export class ActivacionPage implements OnInit {
     );
   }
 
-  async ngOnInit() {
+  // ⚠️ ngOnInit ya no es async para evitar errores con OnInit
+  ngOnInit(): void {
+    this.initialize();
+  }
+
+  private async initialize() {
     await this.initDevice();
     await this.initGeo();
     await this.restoreActivationState();
@@ -187,46 +193,50 @@ export class ActivacionPage implements OnInit {
     return ok;
   }
 
-  // === Restaurar estado según backend / storage ===
   private async restoreActivationState() {
-    try {
-      // 1) Preguntar al backend
-      const result = await this.terminalState.checkTerminalStatus();
+  try {
+    const result = await this.terminalState.checkTerminalStatus();
 
-      if (result.status === 'ACTIVE' && result.config) {
-        // Ya está activa → directo a la pantalla principal
-        await this.showToast(
-          'Terminal activa. Cargando menú principal…',
-          'success'
-        );
-        this.router.navigateByUrl('/terminal', { replaceUrl: true });
-        return;
-      }
-
-      // 2) Si no está activa, verificar si hay solicitud pendiente en storage
-      const pending = await this.terminalState.isEnrollPending();
-
-      if (pending) {
-        this.activationRequested.set(true);
-        this.activationStatus.set('PENDING');
-        this.activationMessage.set(
-          'Tu solicitud de activación está en proceso. ' +
-            'Cuando el administrador la apruebe, podrás usar esta terminal.'
-        );
-      } else {
-        this.activationRequested.set(false);
-        this.activationStatus.set('IDLE');
-        this.activationMessage.set(null);
-      }
-    } catch (err) {
-      console.error('[ACTIVACION] Error restaurando estado:', err);
-      // Opcional: mensaje suave de conexión
-      this.activationStatus.set('ERROR');
-      this.activationMessage.set(
-        'No se pudo verificar el estado de la terminal. Revisa tu conexión e intenta de nuevo.'
+    if (result.status === 'ACTIVE' && result.config) {
+      await this.showToast(
+        'Terminal activa. Cargando menú principal…',
+        'success'
       );
+      this.router.navigateByUrl('/terminal', { replaceUrl: true });
+      return;
     }
+
+    const pending = await this.terminalState.isEnrollPending();
+
+    // 👉 OPCIÓN: si el backend dice NOT_REGISTERED, limpiamos pending local
+    if (result.status === 'NOT_REGISTERED' && pending) {
+      await this.terminalState.clearEnrollPending();
+    }
+
+    const finalPending =
+      result.status !== 'ACTIVE' ? await this.terminalState.isEnrollPending() : false;
+
+    if (finalPending) {
+      this.activationRequested.set(true);
+      this.activationStatus.set('PENDING');
+      this.activationMessage.set(
+        'Tu solicitud de activación está en proceso. ' +
+          'Cuando el administrador la apruebe, podrás usar esta terminal.'
+      );
+    } else {
+      this.activationRequested.set(false);
+      this.activationStatus.set('IDLE');
+      this.activationMessage.set(null);
+    }
+  } catch (err) {
+    console.error('[ACTIVACION] Error restaurando estado:', err);
+    this.activationStatus.set('ERROR');
+    this.activationMessage.set(
+      'No se pudo verificar el estado de la terminal. Revisa tu conexión e intenta de nuevo.'
+    );
   }
+}
+
 
   // === Triple tap logo ===
   onLogoTap() {
@@ -243,6 +253,15 @@ export class ActivacionPage implements OnInit {
 
   // === Botón Activar ===
   async onActivateClick() {
+    console.log('[ACTIVACION] CLICK botón Activar', {
+      deviceId: this.deviceId(),
+      lat: this.lat(),
+      lon: this.lon(),
+      loadingDevice: this.loadingDevice(),
+      loadingGeo: this.loadingGeo(),
+      activationRequested: this.activationRequested(),
+    });
+
     // Si ya hay solicitud, no dejar spamear
     if (this.activationRequested()) {
       this.showToast(
@@ -367,8 +386,14 @@ export class ActivacionPage implements OnInit {
 
     try {
       const result = await this.terminalState.checkTerminalStatus();
+      const pending = await this.terminalState.isEnrollPending();
+
+      console.log('[ACTIVACION] check status', { result, pending });
 
       if (result.status === 'ACTIVE') {
+        // ✅ Ya está activa: limpiamos pending y vamos al menú
+        await this.terminalState.clearEnrollPending();
+
         await this.showToast(
           'Terminal activada. Cargando menú principal…',
           'success'
@@ -378,18 +403,33 @@ export class ActivacionPage implements OnInit {
       }
 
       if (result.status === 'NOT_REGISTERED') {
-        // 👉 Si el backend dice que no hay terminal, limpiamos la marca de pending
-        await this.terminalState.clearEnrollPending();
+        if (pending) {
+          // 🔄 Tenemos solicitud pendiente localmente,
+          // pero el backend todavía no refleja la terminal como "ACTIVE".
+          this.activationRequested.set(true);
+          this.activationStatus.set('PENDING');
+          this.activationMessage.set(
+            'Tu solicitud de activación sigue en proceso. ' +
+              'Aún no aparece como activada en el sistema.'
+          );
 
-        this.activationRequested.set(false);
-        this.activationStatus.set('IDLE');
-        this.activationMessage.set(
-          'No hay solicitud registrada para este dispositivo. Vuelve a enviar la activación.'
-        );
-        await this.showToast('No hay solicitud registrada aún.', 'warning');
+          await this.showToast(
+            'La solicitud sigue en proceso. Intenta de nuevo más tarde.',
+            'warning'
+          );
+        } else {
+          // ❌ No hay pending en storage y el backend tampoco ve terminal
+          this.activationRequested.set(false);
+          this.activationStatus.set('IDLE');
+          this.activationMessage.set(
+            'No hay solicitud registrada para este dispositivo. Vuelve a enviar la activación.'
+          );
+          await this.showToast('No hay solicitud registrada aún.', 'warning');
+        }
         return;
       }
 
+      // Otros estados que puedas agregar en el futuro (BLOCKED, etc.)
       await this.showToast(
         'La terminal todavía no aparece como activada. Intenta de nuevo en unos minutos.',
         'warning'
@@ -404,8 +444,6 @@ export class ActivacionPage implements OnInit {
       await loading.dismiss();
     }
   }
-
-  
 
   async resetStorage() {
     await this.terminalState.clearTerminalData();

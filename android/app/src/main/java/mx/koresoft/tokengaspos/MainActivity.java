@@ -29,7 +29,7 @@ public class MainActivity extends BridgeActivity {
 
     // Mantener pantalla encendida y bloquear screenshots
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-    getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+   // getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
 
     nfcAdapter = NfcAdapter.getDefaultAdapter(this);
 

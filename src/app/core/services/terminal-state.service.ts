@@ -7,7 +7,7 @@ import { environment } from 'src/environments/environment';
 
 // ============= TIPOS Y INTERFACES =============
 
-export type TerminalStatus = 'ACTIVE' | 'NOT_REGISTERED' | 'UNKNOWN';
+export type TerminalStatus = 'ACTIVE' | 'PENDING' | 'NOT_REGISTERED' | 'UNKNOWN';
 
 export interface MerchantInfo {
   id: string;
@@ -40,7 +40,7 @@ export interface TerminalConfig {
 
 export interface BffTerminalStatusResponse {
   ok: boolean;
-  status: 'ACTIVE' | 'NOT_REGISTERED';
+  status: 'ACTIVE' | 'PENDING' | 'NOT_REGISTERED' | 'ERROR';
   terminal?: {
     device_uid: string;
     descripcion: string;
@@ -52,12 +52,19 @@ export interface BffTerminalStatusResponse {
     operatorId: string;
     geo: GeoInfo;
   };
+  request?: {
+    id: number | string;
+    status: string;
+    last_step: string;
+    createdAt?: string;
+  };
 }
 
 export interface TerminalStatusResult {
   deviceUid: string;
   status: TerminalStatus;
   config: TerminalConfig | null;
+  requestId?: string | number;
 }
 
 export interface ActivationRequestPayload {
@@ -100,12 +107,23 @@ export class TerminalStateService {
     await this.storageReady;
 
     const cached = await this.storage.get(this.STORAGE_DEVICE_UID);
-    if (cached) return cached;
+    if (cached) {
+      console.log('[DEVICE UID] desde storage =', cached);
+      return cached;
+    }
 
-    const info = await Device.getId();
-    const uid = info.identifier || 'UNKNOWN_DEVICE';
+    const infoId = await Device.getId();
+    console.log('[DEVICE UID] Device.getId().identifier =', infoId.identifier);
+
+    const info = await Device.getInfo();
+    console.log('[DEVICE INFO] uuid =', (info as any).uuid);
+    console.log('[DEVICE INFO] model =', info.model, 'platform =', info.platform);
+
+    const uid = infoId.identifier || 'UNKNOWN_DEVICE';
 
     await this.storage.set(this.STORAGE_DEVICE_UID, uid);
+    console.log('[DEVICE UID] guardado en storage =', uid);
+
     return uid;
   }
 
@@ -115,61 +133,76 @@ export class TerminalStateService {
    * GET {bffBaseUrl}/terminales/by-device/:device_uid/status
    */
   async checkTerminalStatus(): Promise<TerminalStatusResult> {
-  await this.storageReady;
+    await this.storageReady;
 
-  const deviceUid = await this.getDeviceUid();
-  const url = `${environment.bffBaseUrl}/terminales/by-device/${deviceUid}/status`;
+    const deviceUid = await this.getDeviceUid();
+    console.log('[TG] checkTerminalStatus → deviceUid', deviceUid);
 
-  console.log('[TG] checkTerminalStatus → URL', url);
+    const url = `${environment.bffBaseUrl}/terminales/by-device/${deviceUid}/status`;
+    console.log('[TG] checkTerminalStatus → URL', url);
 
-  try {
-    const resp = await firstValueFrom(
-      this.http.get<BffTerminalStatusResponse>(url)
-    );
+    try {
+      const resp = await firstValueFrom(
+        this.http.get<BffTerminalStatusResponse>(url)
+      );
 
-    console.log('[TG] checkTerminalStatus → resp', resp);
+      console.log('[TG] checkTerminalStatus → resp', resp);
 
-    if (resp.ok && resp.status === 'ACTIVE' && resp.terminal) {
-      const t = resp.terminal;
+      // --- TERMINAL ACTIVA ---
+      if (resp.ok && resp.status === 'ACTIVE' && resp.terminal) {
+        const t = resp.terminal;
 
-      const config: TerminalConfig = {
-        deviceUid: t.device_uid,
-        descripcion: t.descripcion,
-        networkCode: t.networkCode,
-        merchant: t.merchant,
-        site: t.site,
-        modelo: t.modelo,
-        appVersion: t.appVersion,
-        operatorId: t.operatorId,
-        geo: t.geo,
-      };
+        const config: TerminalConfig = {
+          deviceUid: t.device_uid,
+          descripcion: t.descripcion,
+          networkCode: t.networkCode,
+          merchant: t.merchant,
+          site: t.site,
+          modelo: t.modelo,
+          appVersion: t.appVersion,
+          operatorId: t.operatorId,
+          geo: t.geo,
+        };
 
-      await this.saveTerminalConfig(config);
-      await this.clearEnrollPending();
+        await this.saveTerminalConfig(config);
+        await this.clearEnrollPending();
 
-      return { deviceUid, status: 'ACTIVE', config };
-    }
+        return { deviceUid, status: 'ACTIVE', config };
+      }
 
-    // Si no vino ACTIVE con terminal, lo tratamos como UNKNOWN
-    return { deviceUid, status: 'UNKNOWN', config: null };
+      // --- SOLICITUD PENDIENTE ---
+      if (resp.ok && resp.status === 'PENDING' && resp.request) {
+        console.log('[TG] checkTerminalStatus → solicitud PENDING', resp.request);
+        await this.markEnrollPending();
 
-  } catch (err: any) {
-    console.error('[TG] checkTerminalStatus → ERROR', err);
+        return {
+          deviceUid,
+          status: 'PENDING',
+          config: null,
+          requestId: resp.request.id,
+        };
+      }
 
-    // Error de red / TLS / sin conexión
-    if (err.status === 0) {
+      // Si la respuesta OK no es ACTIVE ni PENDING, lo tomamos como UNKNOWN
+      return { deviceUid, status: 'UNKNOWN', config: null };
+
+    } catch (err: any) {
+      console.error('[TG] checkTerminalStatus → ERROR', err);
+
+      // Error de red / TLS / sin conexión
+      if (err.status === 0) {
+        return { deviceUid, status: 'UNKNOWN', config: null };
+      }
+
+      // Cualquier 404 del BFF se interpreta como NO REGISTRADA
+      if (err.status === 404) {
+        await this.clearEnrollPending();
+        return { deviceUid, status: 'NOT_REGISTERED', config: null };
+      }
+
       return { deviceUid, status: 'UNKNOWN', config: null };
     }
-
-    // Cualquier 404 del BFF se interpreta como NO REGISTRADA
-    if (err.status === 404) {
-      return { deviceUid, status: 'NOT_REGISTERED', config: null };
-    }
-
-    return { deviceUid, status: 'UNKNOWN', config: null };
   }
-}
-
 
   // ========== STORAGE CONFIG ==========
   async saveTerminalConfig(config: TerminalConfig): Promise<void> {
@@ -236,7 +269,6 @@ export class TerminalStateService {
           const detail = JSON.parse(err.error.detail);
 
           if (detail.error === 'device_already_registered') {
-            // Igual dejamos la bandera de pending, porque ya hay una solicitud
             await this.markEnrollPending();
 
             return {
