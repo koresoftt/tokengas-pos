@@ -7,11 +7,9 @@ import { LoadingPage } from './pages/loading/loading.page';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'loading', pathMatch: 'full' },
+{ path: 'loading', component: LoadingPage },
+{ path: 'terminal', component: TerminalPage },
+{ path: 'activacion', component: ActivacionPage },
+{ path: '**', redirectTo: 'loading' },
 
-  { path: 'loading', component: LoadingPage },
-  { path: 'terminal', component: TerminalPage },
-  { path: 'activacion', component: ActivacionPage },
-
-  { path: 'startup', component: StartupPage }, // opcional
-  { path: '**', redirectTo: 'loading' },
 ];

@@ -2,18 +2,19 @@
   <div class="center">
     <img src="assets/logo_tg.png" class="logo" alt="TokenGas" />
 
-    <ion-spinner *ngIf="checking" name="crescent" aria-label="Verificando"></ion-spinner>
+    <ion-spinner
+      *ngIf="checking"
+      name="crescent"
+      aria-label="Verificando dispositivo"
+    ></ion-spinner>
 
     <p class="msg">{{ statusMessage }}</p>
 
-    <!-- ✅ Debug visible -->
-    <ion-text color="medium">
-      <pre style="text-align:left; white-space:pre-wrap; font-size:12px; opacity:.85; max-width:92vw;">
-{{ debugText }}
-      </pre>
-    </ion-text>
-
-    <ion-button expand="block" *ngIf="!checking && canRetry" (click)="onRetry()">
+    <ion-button
+      expand="block"
+      *ngIf="!checking && canRetry"
+      (click)="onRetry()"
+    >
       Reintentar
     </ion-button>
   </div>
