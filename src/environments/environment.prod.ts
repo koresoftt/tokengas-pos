@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  baseUrl: 'https://tokengas.koresoft.mx',
+  baseUrl: 'https://api.koresoft.mx', // público (nginx -> app-bff)
 };

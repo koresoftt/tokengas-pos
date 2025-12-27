@@ -1,8 +1,7 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from 'src/environments/environment';
-import { DeviceSessionService } from './device-session.service';
 import { Device } from '@capacitor/device';
 import { Storage } from '@ionic/storage-angular';
 
@@ -38,16 +37,31 @@ export class TerminalStateService {
   private readonly STORAGE_PENDING = 'tg_enroll_pending';
   private readonly STORAGE_DEVICE_UID = 'tg_device_uid';
 
+  // ✅ debug visible para UI
+  private _debugLines: string[] = [];
+  get debugText(): string {
+    return this._debugLines.join('\n');
+  }
+  clearDebug(): void {
+    this._debugLines = [];
+  }
+  private dbg(line: string) {
+    this._debugLines.push(line);
+    // también a consola
+    // eslint-disable-next-line no-console
+    console.log('[TG][ENROLL]', line);
+  }
+
   constructor(
     private http: HttpClient,
-    private storage: Storage,
-    private session: DeviceSessionService
+    private storage: Storage
   ) {
     this.storageReady = (this.storage as any)['create']().then(() => undefined);
   }
 
   async getDeviceUid(): Promise<string> {
     await this.storageReady;
+
     const cached = await (this.storage as any)['get'](this.STORAGE_DEVICE_UID);
     if (cached) return cached;
 
@@ -56,84 +70,133 @@ export class TerminalStateService {
     return uid;
   }
 
-  async checkTerminalStatus(appVersion: string): Promise<TerminalStatusResult> {
+  async checkTerminalStatus(_appVersion: string): Promise<TerminalStatusResult> {
     await this.storageReady;
+    this.clearDebug();
 
     const deviceUid = await this.getDeviceUid();
-    const url = `${environment.baseUrl}/bff/enroll/status`;
+    const url = `${environment.baseUrl}/enroll/status`;
 
-    const call = async () => {
-      const s = await this.session.ensure(appVersion);
-      const headers = new HttpHeaders({ 'X-Device-Session': s });
-      return await firstValueFrom(this.http.get<any>(url, { headers }));
-    };
+    this.dbg(`baseUrl=${environment.baseUrl}`);
+    this.dbg(`GET ${url}`);
+    this.dbg(`X-Device-Uid=${deviceUid}`);
+
+    const headers = new HttpHeaders({
+      'X-Device-Uid': deviceUid,
+      'Accept': 'application/json',
+    });
 
     try {
-      const r = await call();
+      const r = await firstValueFrom(this.http.get<any>(url, { headers }));
+
+      this.dbg(`HTTP OK`);
+      this.dbg(`body.status=${String(r?.status || '')}`);
+      this.dbg(`body.message=${String(r?.message || '')}`);
 
       if (r?.ok) {
-        if (r.status === 'ACTIVATED') {
+        const s = String(r.status || '').toUpperCase();
+
+        if (s === 'ACTIVATED') {
           await this.clearPending();
           return { deviceUid, status: 'ACTIVATED', config: null };
         }
 
-        if (r.status === 'PENDING' || r.status === 'ALREADY_REGISTERED') {
+        if (s === 'PENDING' || s === 'ALREADY_REGISTERED') {
           await this.markPending();
-          return { deviceUid, status: r.status, config: null };
+          return { deviceUid, status: s as TerminalStatus, config: null };
         }
 
-        if (r.status === 'NOT_REGISTERED') {
+        if (s === 'NOT_REGISTERED') {
           await this.clearPending();
           return { deviceUid, status: 'NOT_REGISTERED', config: null };
         }
       }
 
+      this.dbg(`Respuesta inesperada -> ERROR`);
       return { deviceUid, status: 'ERROR', config: null };
     } catch (e: any) {
-      if (e?.status === 401) {
-        await this.session.clear();
-        return this.checkTerminalStatus(appVersion); // re-login + retry
+      const err = e as HttpErrorResponse;
+      this.dbg(`HTTP ERROR`);
+      this.dbg(`status=${err?.status}`);
+      this.dbg(`message=${err?.message}`);
+
+      // intenta imprimir body del error
+      try {
+        const body = err?.error;
+        if (typeof body === 'string') {
+          this.dbg(`errorBody=${body.slice(0, 500)}`);
+        } else if (body && typeof body === 'object') {
+          this.dbg(`errorBody=${JSON.stringify(body).slice(0, 800)}`);
+        } else {
+          this.dbg(`errorBody=<empty>`);
+        }
+      } catch {
+        this.dbg(`errorBody=<unreadable>`);
       }
+
       return { deviceUid, status: 'ERROR', config: null };
     }
   }
 
-    async createActivationRequest(payload: ActivationRequestPayload): Promise<ActivationRequestResponse> {
-    const url = `${environment.baseUrl}/bff/enroll/request`;
+  async createActivationRequest(payload: ActivationRequestPayload): Promise<ActivationRequestResponse> {
+    await this.storageReady;
+    this.clearDebug();
 
-    const call = async () => {
-      const s = await this.session.ensure(payload.app_version);
-      const headers = new HttpHeaders({ 'X-Device-Session': s });
-      return await firstValueFrom(this.http.post<any>(url, payload, { headers }));
+    const deviceUid = await this.getDeviceUid();
+    const url = `${environment.baseUrl}/enroll/request`;
+
+    this.dbg(`baseUrl=${environment.baseUrl}`);
+    this.dbg(`POST ${url}`);
+    this.dbg(`X-Device-Uid=${deviceUid}`);
+
+    const headers = new HttpHeaders({
+      'X-Device-Uid': deviceUid,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    });
+
+    const body = {
+      modelo: payload.modelo,
+      app_version: payload.app_version,
+      operator_id: payload.operator_id,
+      geo_lat: payload.geo_lat,
+      geo_lon: payload.geo_lon,
     };
 
-    try {
-      const r = await call();
-      if (r?.ok) {
-        await this.markPending();
-        return { ok: true, message: r.message };
-      }
-      return { ok: false, message: r?.message || 'Solicitud rechazada.' };
-    } catch (e: any) {
-      console.error('[ENROLL][REQUEST] error', {
-        url,
-        status: e?.status,
-        error: e?.error,
-        message: e?.message,
-      });
+    this.dbg(`payload=${JSON.stringify(body)}`);
 
-      if (e?.status === 401) {
-        await this.session.clear();
-        return this.createActivationRequest(payload);
+    try {
+      const r = await firstValueFrom(this.http.post<any>(url, body, { headers }));
+
+      this.dbg(`HTTP OK`);
+      this.dbg(`resp=${JSON.stringify(r).slice(0, 800)}`);
+
+      // En tu API a veces regresa {ok:true,...} o 201 con otro shape.
+      await this.markPending();
+      return { ok: true, message: r?.message || 'Solicitud enviada.' };
+    } catch (e: any) {
+      const err = e as HttpErrorResponse;
+      this.dbg(`HTTP ERROR`);
+      this.dbg(`status=${err?.status}`);
+      this.dbg(`message=${err?.message}`);
+
+      try {
+        const bodyErr = err?.error;
+        if (typeof bodyErr === 'string') this.dbg(`errorBody=${bodyErr.slice(0, 500)}`);
+        else if (bodyErr && typeof bodyErr === 'object') this.dbg(`errorBody=${JSON.stringify(bodyErr).slice(0, 800)}`);
+        else this.dbg(`errorBody=<empty>`);
+      } catch {
+        this.dbg(`errorBody=<unreadable>`);
       }
-      if (e?.status === 409) {
+
+      if (err?.status === 409) {
         await this.markPending();
         return { ok: false, message: 'Ya existe una solicitud registrada.' };
       }
-      return { ok: false, message: e?.error?.message || 'Error al crear solicitud.' };
+
+      return { ok: false, message: err?.error?.message || 'Error al crear solicitud.' };
     }
   }
-
 
   async markPending() {
     await this.storageReady;
