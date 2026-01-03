@@ -29,9 +29,10 @@ bootstrapApplication(AppComponent, {
     provideRouter(routes, withPreloading(PreloadAllModules)),
     { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },
 
+    // ✅ HttpClient para servicios (TerminalStateService, etc.)
     provideHttpClient(),
 
-    // 👇 Así se registra Storage en modo standalone
+    // ✅ Storage standalone
     importProvidersFrom(IonicStorageModule.forRoot()),
   ],
 }).catch(console.error);

@@ -1,38 +1,120 @@
 .loading-screen {
-  --background: #050816; /* fondo oscuro tipo splash */
-  color: #f4f4f4;
+  --background: linear-gradient(
+    180deg,
+    #050816 0%,
+    #0b1024 60%,
+    #0e1430 100%
+  );
+  color: #f4f6fb;
 }
 
-.center {
-  height: 100%;
+/* Layout principal */
+.wrap {
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity 1450ms ease-out, transform 1500ms ease-out;
+  padding: 24px;
 }
 
-.center.leaving {
-  opacity: 0;
-  transform: translateY(-30px); /* antes -14, ahora sube más */
-}
-
-.logo {
-  width: 180px;
-  max-width: 60%;
-}
-
-.msg {
-  font-size: 14px;
-  opacity: 0.8;
+/* Card central */
+.card {
+  width: 100%;
+  max-width: 420px;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  border-radius: 18px;
+  padding: 28px 22px 26px;
   text-align: center;
-  padding: 0 32px;
+
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.35),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  animation: fadeUp 420ms ease-out;
 }
 
-ion-button {
-  width: 80%;
-  max-width: 260px;
+/* Logo */
+.logo {
+  width: 160px;
+  max-width: 65%;
+  margin: 4px auto 18px;
+}
+
+/* Estado (spinner / icono) */
+.status {
+  margin: 6px 0 14px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 48px;
+
+  ion-spinner {
+    width: 36px;
+    height: 36px;
+    color: #6ee7ff;
+  }
+
+  ion-icon {
+    font-size: 44px;
+  }
+
+  ion-icon[name='checkmark-circle-outline'] {
+    color: #4ade80;
+  }
+
+  ion-icon[name='time-outline'] {
+    color: #facc15;
+  }
+
+  ion-icon[name='alert-circle-outline'] {
+    color: #fb7185;
+  }
+}
+
+/* Textos */
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 6px 0 4px;
+  letter-spacing: 0.2px;
+}
+
+.subtitle {
+  font-size: 14px;
+  opacity: 0.85;
+  margin: 0;
+}
+
+.detail {
+  font-size: 12px;
+  opacity: 0.65;
+  margin-top: 10px;
+}
+
+/* Botón */
+ion-button.btn {
+  margin-top: 18px;
+  --border-radius: 12px;
+  --box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+/* Hint inferior */
+.hint {
+  margin-top: 14px;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+/* Animación sutil */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

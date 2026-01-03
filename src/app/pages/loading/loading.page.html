@@ -1,21 +1,44 @@
 <ion-content class="loading-screen">
-  <div class="center">
-    <img src="assets/logo_tg.png" class="logo" alt="TokenGas" />
+  <div class="wrap">
+    <div class="card">
+      <img src="assets/logo_tg.png" class="logo" alt="TokenGas" />
 
-    <ion-spinner
-      *ngIf="checking"
-      name="crescent"
-      aria-label="Verificando dispositivo"
-    ></ion-spinner>
+      <div class="status">
+        <ion-spinner *ngIf="checking" name="crescent"></ion-spinner>
 
-    <p class="msg">{{ statusMessage }}</p>
+        <ion-icon
+          *ngIf="!checking && phase === 'error'"
+          name="alert-circle-outline"
+        ></ion-icon>
 
-    <ion-button
-      expand="block"
-      *ngIf="!checking && canRetry"
-      (click)="onRetry()"
-    >
-      Reintentar
-    </ion-button>
+        <ion-icon
+          *ngIf="phase === 'pending'"
+          name="time-outline"
+        ></ion-icon>
+
+        <ion-icon
+          *ngIf="phase === 'activated'"
+          name="checkmark-circle-outline"
+        ></ion-icon>
+      </div>
+
+      <h1 class="title">{{ title }}</h1>
+      <p class="subtitle">{{ subtitle }}</p>
+
+      <p class="detail" *ngIf="detail">{{ detail }}</p>
+
+      <ion-button
+        expand="block"
+        class="btn"
+        *ngIf="!checking && canRetry"
+        (click)="onRetry()"
+      >
+        Reintentar
+      </ion-button>
+    </div>
+
+    <div class="hint" *ngIf="phase === 'pending' && !canRetry">
+      Actualizando automáticamente…
+    </div>
   </div>
 </ion-content>
