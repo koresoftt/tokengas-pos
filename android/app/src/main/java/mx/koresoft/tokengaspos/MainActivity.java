@@ -24,18 +24,23 @@ public class MainActivity extends BridgeActivity {
   private final AtomicBoolean nfcLock = new AtomicBoolean(false); // evita lecturas repetidas
 
   @Override
-  public void onCreate(Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
+public void onCreate(Bundle savedInstanceState) {
 
-    // Mantener pantalla encendida y bloquear screenshots
-    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-   // getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+  // ✅ Registrar plugin ANTES de super.onCreate (Capacitor v7)
+  registerPlugin(AppKeysPlugin.class);
 
-    nfcAdapter = NfcAdapter.getDefaultAdapter(this);
+  super.onCreate(savedInstanceState);
 
-    // ⬅️ Exponer API JS para rearmar y re-habilitar el lector desde Angular
-    getBridge().getWebView().addJavascriptInterface(new NfcJsApi(), "NativeNfc");
-  }
+  // Mantener pantalla encendida y bloquear screenshots
+  getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+  // getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+
+  nfcAdapter = NfcAdapter.getDefaultAdapter(this);
+
+  // ⬅️ Exponer API JS para rearmar y re-habilitar el lector desde Angular
+  getBridge().getWebView().addJavascriptInterface(new NfcJsApi(), "NativeNfc");
+}
+
 
   @Override
   public void onResume() {

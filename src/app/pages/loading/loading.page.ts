@@ -16,7 +16,8 @@ import {
 } from 'ionicons/icons';
 
 import { TerminalStateService } from 'src/app/core/services/terminal-state.service';
-import { CryptoIdentityService } from 'src/app/core/security/crypto-identity.service';
+import { AppKeysService } from 'src/app/core/security/app-keys.service';
+
 
 type UiPhase =
   | 'checking'
@@ -51,44 +52,47 @@ export class LoadingPage implements OnInit, OnDestroy {
   private readonly PENDING_POLL_MAX = 3;
   private pendingPolls = 0;
 
-  constructor(
-    private terminal: TerminalStateService,
-    private router: Router,
-    private cryptoId: CryptoIdentityService
-  ) {
-    addIcons({
-      checkmarkCircleOutline,
-      timeOutline,
-      alertCircleOutline,
-    });
-  }
+ constructor(
+  private terminal: TerminalStateService,
+  private router: Router,
+  private appKeys: AppKeysService
+) {
+  addIcons({ checkmarkCircleOutline, timeOutline, alertCircleOutline });
+}
+
 
   async ngOnInit(): Promise<void> {
-    // 1️⃣ Inicializar identidad criptográfica
-    try {
-      await this.cryptoId.ensureIdentity();
-      const { kid } = this.cryptoId.getIdentity();
-      console.log('[CRYPTO] KID OK:', kid);
-    } catch (e) {
-      console.error('[CRYPTO] Error inicializando identidad', e);
-      this.phase = 'error';
-      this.title = 'Error de seguridad';
-      this.subtitle = 'No se pudo inicializar el dispositivo';
-      this.canRetry = false;
-      return;
-    }
+  // ✅ 1) Inicializar AppKeys (Keystore nativo) y probar firma
+  try {
+    await this.appKeys.ensure();
+    const kid = await this.appKeys.getKid();
+    console.log('[APPKEYS] KID OK:', kid);
 
-    // 2️⃣ Obtener versión de la app (opcional)
-    try {
-      const info = await App.getInfo();
-      this.appVersion = info.version || this.appVersion;
-    } catch {
-      // noop
-    }
-
-    // 3️⃣ Flujo legacy (temporal)
-    await this.run();
+    const testPayload = `ping|${Date.now()}`;
+    const signed = await this.appKeys.sign(testPayload);
+    console.log('[APPKEYS] SIGN OK:', signed);
+  } catch (e) {
+    console.error('[APPKEYS] Error inicializando keystore', e);
+    this.phase = 'error';
+    this.title = 'Error de seguridad';
+    this.subtitle = 'No se pudo inicializar el Keystore';
+    this.detail = 'Revisa permisos/instalación y vuelve a abrir la app.';
+    this.checking = false;
+    this.canRetry = false;
+    return;
   }
+
+  // ✅ 2) Obtener versión de la app (opcional)
+  try {
+    const info = await App.getInfo();
+    this.appVersion = info.version || this.appVersion;
+  } catch {
+    // noop
+  }
+
+  // ✅ 3) Flujo legacy (temporal) mientras conectamos /app/challenge
+  await this.run();
+}
 
   ngOnDestroy(): void {
     this.destroyed = true;
