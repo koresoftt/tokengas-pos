@@ -3,13 +3,14 @@
    Estilo AdminLTE / Dark Panel / Animaciones suaves
    ================================================ */
 
-:host ion-content {
+:host {
+  display: block;
+}
+
+/* ✅ No fuerces flex en ion-content (puede romper scroll en iOS/Android) */
+ion-content {
   --background: #111827; /* gris muy oscuro tipo AdminLTE */
   color: #e5e7eb;
-
-  display: flex;
-  flex-direction: column;
-  align-items: center;
 }
 
 /* Wrapper central */
@@ -56,46 +57,53 @@
 
 .logo {
   display: block;
-  width: 150px;
+  width: 160px;
   max-width: 65%;
-  margin: 10px auto 24px auto;
+  margin: 10px auto 18px auto;
 
   filter: drop-shadow(0 12px 25px rgba(0, 0, 0, 0.75));
   animation: logoPop 260ms ease-out both;
+
+  /* ✅ performance: evita re-layout al tocar */
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 /* ==========================
-   Tarjetas / panels
+   Cards / panels
    ========================== */
 
+ion-card.card,
 .card {
   width: 100%;
   max-width: 420px;
-  margin-bottom: 16px;
+  margin: 0 0 12px 0;
 
   background: #111827;
   border-radius: 16px;
 
-  /* Sin borde “cuadro”, solo sombra suave */
   border: none;
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.65);
 }
 
-
-/* Panel técnico con animación “up” */
+/* Panel técnico con animación */
 .tech-card {
   animation: fadeInUp 260ms ease-out both;
 }
 
-/* Status card un poco más suave */
+/* Status card: borde “neutral” por default */
 .status-card {
-  border-color: rgba(52, 211, 153, 0.5);
+  border: 1px solid rgba(55, 65, 81, 0.8);
 }
 
-/* Debug card más técnica (si la activas) */
+/* ✅ Puedes setear estas clases desde TS si quieres (opcional):
+   .status-card.is-success / is-warning / is-danger */
+.status-card.is-success { border-color: rgba(52, 211, 153, 0.55); }
+.status-card.is-warning { border-color: rgba(251, 191, 36, 0.55); }
+.status-card.is-danger  { border-color: rgba(248, 113, 113, 0.65); }
+
 .debug-card {
-  border-style: dashed;
-  border-color: rgba(129, 140, 248, 0.8);
+  border: 1px dashed rgba(129, 140, 248, 0.8);
 }
 
 /* Headers dentro de card */
@@ -117,15 +125,15 @@ ion-card-title {
 
 .block {
   margin-bottom: 16px;
+}
 
-  ion-text[color='medium'] {
-    font-size: 0.75rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: #9ca3af;
-    display: inline-block;
-    margin-bottom: 6px;
-  }
+.block ion-text[color='medium'] {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9ca3af;
+  display: inline-block;
+  margin-bottom: 6px;
 }
 
 .row {
@@ -134,11 +142,11 @@ ion-card-title {
   gap: 10px;
   font-size: 0.84rem;
   color: #d1d5db;
+}
 
-  ion-spinner {
-    width: 16px;
-    height: 16px;
-  }
+.row ion-spinner {
+  width: 16px;
+  height: 16px;
 }
 
 .label {
@@ -152,27 +160,23 @@ ion-card-title {
 .value {
   font-size: 0.9rem;
   color: #f9fafb;
+}
 
-  &.mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-      'Liberation Mono', 'Courier New', monospace;
-    font-size: 0.78rem;
-    letter-spacing: 0.03em;
-  }
+/* ✅ FIX: tu HTML usa class="value mono" (no .value.mono) */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
 }
 
 /* ion-item oscuro */
 ion-item {
   --background: transparent;
-  --border-width: 0; 
+  --border-width: 0;
   --padding-start: 0;
   --inner-padding-end: 0;
   --min-height: 44px;
-}
-
-
-ion-item:last-child {
-  --border-width: 0;
 }
 
 ion-button[size='small'][fill='clear'] {
@@ -189,11 +193,11 @@ ion-button[size='small'][fill='clear'] {
   border: 1px solid rgba(248, 113, 113, 0.65);
   color: #fecaca;
   font-size: 0.8rem;
+}
 
-  ion-button {
-    --color: #fecaca;
-    font-size: 0.75rem;
-  }
+.error ion-button {
+  --color: #fecaca;
+  font-size: 0.75rem;
 }
 
 /* Separador */
@@ -208,44 +212,38 @@ hr {
    ========================== */
 
 .activate-btn {
+  width: 100%;
   --border-width: 0;
   --border-style: none;
   --border-color: transparent;
   --box-shadow: none;
+
+  /* ✅ suavidad al tap */
+  transition: transform 120ms ease, filter 120ms ease;
 }
 
 .btn-activate-green {
-  --background: #0f3d2e;          // verde oscuro
-  --background-hover: #145a40;
+  --background: #0f3d2e;          /* verde oscuro */
   --background-activated: #0b2e23;
   --background-focused: #145a40;
-
   --color: #ffffff;
-
-  --border-radius: 10px;
-  font-weight: 600;
+  --border-radius: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
-
-/* Highlight tipo AdminLTE cuando se toca */
-.activate-btn::part(native) {
-  /* para estados de focus/tap */
-  outline: none;
-}
-
-.activate-btn.ion-activated,
-.activate-btn:hover {
+/* ✅ Mobile-friendly: usa :active + ion-activated */
+.activate-btn:active,
+.activate-btn.ion-activated {
   transform: translateY(-1px);
-  box-shadow:
-    0 18px 38px rgba(59, 130, 246, 0.7),
-    0 0 0 1px rgba(59, 130, 246, 1);
+  filter: brightness(1.08);
 }
 
 /* Botón outline "ver estado" */
 ion-button[fill='outline'] {
   width: 90%;
   max-width: 340px;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 /* ==========================
@@ -264,16 +262,16 @@ pre.json {
   font-size: 0.78rem;
   max-height: 220px;
   overflow: auto;
+}
 
-  &::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
+pre.json::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
 
-  &::-webkit-scrollbar-thumb {
-    background: #4b5563;
-    border-radius: 999px;
-  }
+pre.json::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 999px;
 }
 
 /* ==========================
@@ -281,34 +279,16 @@ pre.json {
    ========================== */
 
 @keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes fadeInDown {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes logoPop {
-  from {
-    opacity: 0;
-    transform: scale(0.9) translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+  from { opacity: 0; transform: scale(0.9) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
 }

@@ -1,5 +1,8 @@
 // src/main.ts
 import { enableProdMode, importProvidersFrom } from '@angular/core';
+import { registerAppIcons } from './app/core/ui/icons';
+registerAppIcons();
+
 import { bootstrapApplication } from '@angular/platform-browser';
 import {
   provideRouter,
@@ -31,8 +34,10 @@ bootstrapApplication(AppComponent, {
 
     // ✅ HttpClient para servicios (TerminalStateService, etc.)
     provideHttpClient(),
+    
 
     // ✅ Storage standalone
     importProvidersFrom(IonicStorageModule.forRoot()),
   ],
+  
 }).catch(console.error);

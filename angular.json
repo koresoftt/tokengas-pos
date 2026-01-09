@@ -92,6 +92,7 @@
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
           "options": {
+            "proxyConfig": "proxy.conf.json",
             "host": "0.0.0.0",
             "port": 8100
           },

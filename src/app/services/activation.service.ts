@@ -1,35 +1,51 @@
 import { Injectable } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
+import { App } from '@capacitor/app';
+import { Device } from '@capacitor/device';
+
+import { AppBootstrapService } from '../core/services/app-bootstrap.service';
 
 export type ActivationPayload = {
-  deviceId: string;
-  model?: string;
-  platform?: string;
-  osVersion?: string;
   lat: number;
   lon: number;
   accuracy?: number;
+  model?: string;
+  platform?: string;
+  osVersion?: string;
 };
 
-export type ActivationStored = ActivationPayload & { at: number };
+export type ActivationStored = ActivationPayload & { at: number; device_uid: string };
 
-const KEY = 'tg_activated';
+const KEY = 'tg_activated_meta';
 
 @Injectable({ providedIn: 'root' })
 export class ActivationService {
+  constructor(private bootstrap: AppBootstrapService) {}
+
   async activate(payload: ActivationPayload): Promise<boolean> {
     try {
-      // TODO: Reemplazar por POST real a tu API
-      // const res = await fetch('https://api.koresoft.mx/activar', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(payload)
-      // });
-      // if (!res.ok) return false;
+      const info = await App.getInfo();
+      const dev = await Device.getInfo();
 
-      await new Promise(r => setTimeout(r, 600)); // simulación
+      const modelo =
+        payload.model ||
+        `${dev.manufacturer || ''} ${dev.model || ''}`.trim() ||
+        'UNKNOWN';
 
-      const toStore: ActivationStored = { ...payload, at: Date.now() };
+      // ✅ bootstrap REAL (challenge + complete)
+  const res = await this.bootstrap.bootstrap({
+  app_id: 'tokengas-pos',
+  app_version: '1.0.3',
+  modelo: payload.model || '',
+});
+
+
+      const toStore: ActivationStored = {
+        ...payload,
+        device_uid: res.device_uid,
+        at: Date.now(),
+      };
+
       await Preferences.set({ key: KEY, value: JSON.stringify(toStore) });
       return true;
     } catch (e) {
@@ -46,7 +62,11 @@ export class ActivationService {
   async getStored(): Promise<ActivationStored | null> {
     const v = await Preferences.get({ key: KEY });
     if (!v.value) return null;
-    try { return JSON.parse(v.value) as ActivationStored; } catch { return null; }
+    try {
+      return JSON.parse(v.value) as ActivationStored;
+    } catch {
+      return null;
+    }
   }
 
   async deactivate(): Promise<void> {

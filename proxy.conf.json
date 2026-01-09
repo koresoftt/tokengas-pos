@@ -1,0 +1,27 @@
+
+{
+  "/app": {
+    "target": "https://app-api.koresoft.mx",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/enroll": {
+    "target": "https://app-api.koresoft.mx",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/terminales": {
+    "target": "https://app-api.koresoft.mx",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/auth": {
+    "target": "https://app-api.koresoft.mx",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  }
+}

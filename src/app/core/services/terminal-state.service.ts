@@ -1,215 +1,125 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders, HttpErrorResponse } from '@angular/common/http';
+import { Preferences } from '@capacitor/preferences';
+
+import { AppBootstrapService, StatusResp } from './app-bootstrap.service';
+import { DeviceSessionService } from './device-session.service';
 import { firstValueFrom } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
 import { environment } from 'src/environments/environment';
-import { Device } from '@capacitor/device';
-import { Storage } from '@ionic/storage-angular';
 
-export type TerminalStatus =
-  | 'ACTIVATED'
-  | 'PENDING'
-  | 'ALREADY_REGISTERED'
-  | 'NOT_REGISTERED'
-  | 'ERROR';
+export type TerminalStatus = 'ACTIVE' | 'PENDING' | 'NOT_REGISTERED' | 'ERROR';
+export type TerminalStatusResult = { status: TerminalStatus; raw?: any };
 
-export interface TerminalStatusResult {
-  deviceUid: string;
-  status: TerminalStatus;
-  config: null;
-}
-
-export interface ActivationRequestPayload {
+// ✅ Payload que tu ActivacionPage arma hoy
+export type ActivationRequestPayload = {
   app_version: string;
   modelo: string;
   operator_id: string;
   geo_lat: number;
   geo_lon: number;
-}
+};
 
-export interface ActivationRequestResponse {
+type ActivationRequestResp = {
   ok: boolean;
+  status?: string;
   message?: string;
-}
+  solicitud_id?: string | number;
+  meta?: any;
+};
+
+const PENDING_KEY = 'tg_enroll_pending';
 
 @Injectable({ providedIn: 'root' })
 export class TerminalStateService {
-  private storageReady: Promise<void>;
-  private readonly STORAGE_PENDING = 'tg_enroll_pending';
-  private readonly STORAGE_DEVICE_UID = 'tg_device_uid';
-
-  // ✅ debug visible para UI
-  private _debugLines: string[] = [];
-  get debugText(): string {
-    return this._debugLines.join('\n');
-  }
-  clearDebug(): void {
-    this._debugLines = [];
-  }
-  private dbg(line: string) {
-    this._debugLines.push(line);
-    // también a consola
-    // eslint-disable-next-line no-console
-    console.log('[TG][ENROLL]', line);
-  }
+  private baseUrlRaw = (environment.baseUrl || 'https://app-api.koresoft.mx').replace(/\/+$/, '');
 
   constructor(
+    private bootstrap: AppBootstrapService,
     private http: HttpClient,
-    private storage: Storage
-  ) {
-    this.storageReady = (this.storage as any)['create']().then(() => undefined);
-  }
+    private session: DeviceSessionService,
+  ) {}
 
+  // -----------------------------
+  // UID estable (lo toma del bootstrap service)
+  // -----------------------------
   async getDeviceUid(): Promise<string> {
-    await this.storageReady;
-
-    const cached = await (this.storage as any)['get'](this.STORAGE_DEVICE_UID);
-    if (cached) return cached;
-
-    const uid = (await Device.getId()).identifier || 'UNKNOWN_DEVICE';
-    await (this.storage as any)['set'](this.STORAGE_DEVICE_UID, uid);
-    return uid;
+    return this.bootstrap.getDeviceUid();
   }
 
-  async checkTerminalStatus(_appVersion: string): Promise<TerminalStatusResult> {
-    await this.storageReady;
-    this.clearDebug();
+  // -----------------------------
+  // Pending local flag
+  // -----------------------------
+  async isEnrollPending(): Promise<boolean> {
+    const v = await Preferences.get({ key: PENDING_KEY });
+    return v.value === '1';
+  }
 
-    const deviceUid = await this.getDeviceUid();
-    const url = `${environment.baseUrl}/enroll/status`;
+  async markPending(): Promise<void> {
+    await Preferences.set({ key: PENDING_KEY, value: '1' });
+  }
 
-    this.dbg(`baseUrl=${environment.baseUrl}`);
-    this.dbg(`GET ${url}`);
-    this.dbg(`X-Device-Uid=${deviceUid}`);
+  async clearPending(): Promise<void> {
+    await Preferences.remove({ key: PENDING_KEY });
+  }
 
-    const headers = new HttpHeaders({
-      'X-Device-Uid': deviceUid,
-      'Accept': 'application/json',
-    });
-
+  // -----------------------------
+  // Status desde backend (firma X-App-* ya la hace AppBootstrapService)
+  // -----------------------------
+  async checkTerminalStatus(_appVersion?: string): Promise<TerminalStatusResult> {
     try {
-      const r = await firstValueFrom(this.http.get<any>(url, { headers }));
+      const r: StatusResp = await this.bootstrap.meStatus();
 
-      this.dbg(`HTTP OK`);
-      this.dbg(`body.status=${String(r?.status || '')}`);
-      this.dbg(`body.message=${String(r?.message || '')}`);
+      const s = String(r?.status || '').toUpperCase();
+      if (s === 'ACTIVE') return { status: 'ACTIVE', raw: r };
+      if (s === 'PENDING') return { status: 'PENDING', raw: r };
+      if (s === 'NOT_REGISTERED') return { status: 'NOT_REGISTERED', raw: r };
 
-      if (r?.ok) {
-        const s = String(r.status || '').toUpperCase();
-
-        if (s === 'ACTIVATED') {
-          await this.clearPending();
-          return { deviceUid, status: 'ACTIVATED', config: null };
-        }
-
-        if (s === 'PENDING' || s === 'ALREADY_REGISTERED') {
-          await this.markPending();
-          return { deviceUid, status: s as TerminalStatus, config: null };
-        }
-
-        if (s === 'NOT_REGISTERED') {
-          await this.clearPending();
-          return { deviceUid, status: 'NOT_REGISTERED', config: null };
-        }
-      }
-
-      this.dbg(`Respuesta inesperada -> ERROR`);
-      return { deviceUid, status: 'ERROR', config: null };
+      return { status: 'PENDING', raw: r };
     } catch (e: any) {
-      const err = e as HttpErrorResponse;
-      this.dbg(`HTTP ERROR`);
-      this.dbg(`status=${err?.status}`);
-      this.dbg(`message=${err?.message}`);
-
-      // intenta imprimir body del error
-      try {
-        const body = err?.error;
-        if (typeof body === 'string') {
-          this.dbg(`errorBody=${body.slice(0, 500)}`);
-        } else if (body && typeof body === 'object') {
-          this.dbg(`errorBody=${JSON.stringify(body).slice(0, 800)}`);
-        } else {
-          this.dbg(`errorBody=<empty>`);
-        }
-      } catch {
-        this.dbg(`errorBody=<unreadable>`);
-      }
-
-      return { deviceUid, status: 'ERROR', config: null };
+      return { status: 'ERROR', raw: { message: e?.message || String(e) } };
     }
   }
 
-  async createActivationRequest(payload: ActivationRequestPayload): Promise<ActivationRequestResponse> {
-    await this.storageReady;
-    this.clearDebug();
-
-    const deviceUid = await this.getDeviceUid();
-    const url = `${environment.baseUrl}/enroll/request`;
-
-    this.dbg(`baseUrl=${environment.baseUrl}`);
-    this.dbg(`POST ${url}`);
-    this.dbg(`X-Device-Uid=${deviceUid}`);
-
-    const headers = new HttpHeaders({
-      'X-Device-Uid': deviceUid,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    });
-
-    const body = {
-      modelo: payload.modelo,
-      app_version: payload.app_version,
-      operator_id: payload.operator_id,
-      geo_lat: payload.geo_lat,
-      geo_lon: payload.geo_lon,
-    };
-
-    this.dbg(`payload=${JSON.stringify(body)}`);
-
+  // -----------------------------
+  // Crear solicitud de activación (tu flujo actual)
+  // -----------------------------
+  async createActivationRequest(payload: ActivationRequestPayload): Promise<ActivationRequestResp> {
     try {
-      const r = await firstValueFrom(this.http.post<any>(url, body, { headers }));
+      // Asegura sesión device (si tu backend la usa aquí)
+      const bearer = await this.session.ensure(payload.app_version);
 
-      this.dbg(`HTTP OK`);
-      this.dbg(`resp=${JSON.stringify(r).slice(0, 800)}`);
+      const url = `${this.baseUrlRaw}/enroll/requests`;
 
-      // En tu API a veces regresa {ok:true,...} o 201 con otro shape.
-      await this.markPending();
-      return { ok: true, message: r?.message || 'Solicitud enviada.' };
-    } catch (e: any) {
-      const err = e as HttpErrorResponse;
-      this.dbg(`HTTP ERROR`);
-      this.dbg(`status=${err?.status}`);
-      this.dbg(`message=${err?.message}`);
+      const resp = await firstValueFrom(
+        this.http.post<ActivationRequestResp>(
+          url,
+          payload,
+          {
+            headers: {
+              Authorization: `Bearer ${bearer}`,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            }
+          }
+        )
+      );
 
-      try {
-        const bodyErr = err?.error;
-        if (typeof bodyErr === 'string') this.dbg(`errorBody=${bodyErr.slice(0, 500)}`);
-        else if (bodyErr && typeof bodyErr === 'object') this.dbg(`errorBody=${JSON.stringify(bodyErr).slice(0, 800)}`);
-        else this.dbg(`errorBody=<empty>`);
-      } catch {
-        this.dbg(`errorBody=<unreadable>`);
+      if (resp?.ok) {
+        await this.markPending();
       }
 
-      if (err?.status === 409) {
+      return resp || { ok: false, message: 'empty_response' };
+    } catch (e: any) {
+      const msg = e?.error?.message || e?.message || 'request_failed';
+
+      // Si el backend responde algo tipo 409 o “ya existe”, marcamos pending para UX
+      const statusCode = e?.status || e?.error?.status;
+      if (statusCode === 409) {
         await this.markPending();
         return { ok: false, message: 'Ya existe una solicitud registrada.' };
       }
 
-      return { ok: false, message: err?.error?.message || 'Error al crear solicitud.' };
+      return { ok: false, message: msg };
     }
-  }
-
-  async markPending() {
-    await this.storageReady;
-    await (this.storage as any)['set'](this.STORAGE_PENDING, true);
-  }
-
-  async clearPending() {
-    await this.storageReady;
-    await (this.storage as any)['remove'](this.STORAGE_PENDING);
-  }
-
-  async isEnrollPending(): Promise<boolean> {
-    await this.storageReady;
-    return !!(await (this.storage as any)['get'](this.STORAGE_PENDING));
   }
 }

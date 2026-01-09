@@ -1,6 +1,6 @@
 <ion-content class="ion-padding">
   <div class="activation-wrapper">
-    <!-- Header tipo AdminLTE -->
+    <!-- Header -->
     <div class="activation-header">
       <div class="app-title">TokenGas POS</div>
       <div class="app-subtitle">Activación de terminal</div>
@@ -8,14 +8,18 @@
 
     <!-- Logo (triple-tap para panel técnico) -->
     <img
-      src="assets/logo_tg.png"
+      src="assets/icon/logo.png"
       alt="TokenGas"
       class="logo"
+      width="180"
+      height="180"
+      loading="lazy"
+      decoding="async"
       (click)="onLogoTap()"
       draggable="false"
     />
 
-    <!-- Panel técnico (solo si showVerifier() === true) -->
+    <!-- Panel técnico -->
     <ion-card class="card tech-card" *ngIf="showVerifier()">
       <ion-card-header>
         <ion-card-title>Verificación del dispositivo</ion-card-title>
@@ -41,15 +45,11 @@
                     <div class="label">Device ID</div>
                     <div class="value mono">{{ deviceId() }}</div>
                   </ion-label>
-                  <ion-button
-                    size="small"
-                    fill="clear"
-                    slot="end"
-                    (click)="copyId()
-                  ">
+                  <ion-button size="small" fill="clear" slot="end" (click)="copyId()">
                     Copiar
                   </ion-button>
                 </ion-item>
+
                 <ion-item>
                   <ion-label>
                     <div class="label">Modelo / SO</div>
@@ -80,7 +80,7 @@
 
           <ng-container *ngIf="loadingGeo(); else geoOk">
             <div class="row">
-              <ion-spinner name="lines"></ion-spinner>
+              <ion-spinner name="lines" aria-label="Cargando"></ion-spinner>
               <span>Obteniendo ubicación…</span>
             </div>
           </ng-container>
@@ -91,17 +91,14 @@
                 <ion-item>
                   <ion-label>
                     <div class="label">Coordenadas</div>
-                    <div class="value mono">
-                      {{ lat() }}, {{ lon() }}
-                    </div>
+                    <div class="value mono">{{ lat() }}, {{ lon() }}</div>
                   </ion-label>
                 </ion-item>
+
                 <ion-item *ngIf="accuracy()">
                   <ion-label>
                     <div class="label">Precisión</div>
-                    <div class="value">
-                      ± {{ accuracy() | number : '1.0-0' }} m
-                    </div>
+                    <div class="value">± {{ accuracy() | number : '1.0-0' }} m</div>
                   </ion-label>
                 </ion-item>
               </ion-list>
@@ -120,50 +117,41 @@
       </ion-card-content>
     </ion-card>
 
-    <!-- Botón principal de Activar -->
-<ion-button
-  class="activate-btn btn-activate-green"
-  expand="block"
-  (click)="onActivateClick()"
-  [disabled]="sending() || activationRequested()"
->
+    <!-- Botón principal -->
+    <ion-button
+      class="activate-btn btn-activate-green"
+      expand="block"
+      (click)="onActivateClick()"
+      [disabled]="sending() || activationRequested() || !canActivate"
+    >
+      <ng-container *ngIf="sending(); else btnText">
+        <ion-spinner name="lines" style="margin-right: 8px;"></ion-spinner>
+        Enviando solicitud…
+      </ng-container>
 
-
-      <ng-container *ngIf="!sending(); else sendingTpl">
-        <!-- Texto según estado -->
+      <ng-template #btnText>
         <ng-container [ngSwitch]="activationStatus()">
           <span *ngSwitchCase="'IDLE'">Activar terminal</span>
           <span *ngSwitchCase="'PENDING'">Solicitud en proceso</span>
-          <span *ngSwitchCase="'ALREADY_REGISTERED'">
-            Solicitud ya registrada
-          </span>
           <span *ngSwitchCase="'ERROR'">Reintentar activación</span>
           <span *ngSwitchDefault>Activar terminal</span>
         </ng-container>
-      </ng-container>
+      </ng-template>
     </ion-button>
 
-    <ng-template #sendingTpl>
-      <ion-spinner name="lines" style="margin-right: 8px;"></ion-spinner>
-      Enviando solicitud…
-    </ng-template>
-
-    <!-- Mensaje de estado debajo del botón -->
+    <!-- Estado -->
     <ion-card *ngIf="activationMessage()" class="card status-card">
       <ion-card-content>
         <ion-text
-          [color]="
-            activationStatus() === 'ERROR'
-              ? 'danger'
-              : activationStatus() === 'ALREADY_REGISTERED'
+          [color]="activationStatus() === 'ERROR'
+            ? 'danger'
+            : activationStatus() === 'PENDING'
               ? 'warning'
-              : 'success'
-          "
+              : 'success'"
         >
-          <p>{{ activationMessage() }}</p>
+          <p style="margin:0;">{{ activationMessage() }}</p>
         </ion-text>
 
-        <!-- Botón "Ver estado" (misma pantalla) -->
         <ion-button
           expand="block"
           fill="outline"
@@ -176,7 +164,8 @@
       </ion-card-content>
     </ion-card>
 
-    <!-- JSON debug (si lo quieres habilitar de nuevo)
+    <!-- Debug JSON opcional -->
+    <!--
     <ion-card *ngIf="showJson()" class="card debug-card">
       <ion-card-header>
         <ion-card-title>JSON enviado (debug)</ion-card-title>

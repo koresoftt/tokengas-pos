@@ -4,7 +4,6 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { App } from '@capacitor/app';
 
-
 import {
   IonContent,
   IonButton,
@@ -33,7 +32,8 @@ import {
   ActivationRequestPayload,
 } from 'src/app/core/services/terminal-state.service';
 
-type ActivationUiStatus = 'IDLE' | 'PENDING' | 'ALREADY_REGISTERED' | 'ERROR';
+type ActivationUiStatus = 'IDLE' | 'PENDING' | 'ERROR';
+
 
 @Component({
   selector: 'app-activacion',
@@ -211,64 +211,59 @@ export class ActivacionPage implements OnInit {
   }
 
   private async restoreActivationState() {
-  try {
-    const result = await this.terminalState.checkTerminalStatus(
-      this.getAppVersionSafe()
-    );
+    try {
+      const result = await this.terminalState.checkTerminalStatus(this.getAppVersionSafe());
 
-    if (result.status === 'ACTIVATED') {
-      await this.showToast('Terminal activa. Cargando menú principal…', 'success');
-      this.router.navigateByUrl('/terminal', { replaceUrl: true });
-      return;
-    }
+      // ✅ BACKEND: ACTIVE (no "ACTIVATED")
+      if (result.status === 'ACTIVE') {
+        await this.terminalState.clearPending();
+        await this.showToast('Terminal activa. Cargando menú principal…', 'success');
+        this.router.navigateByUrl('/terminal', { replaceUrl: true });
+        return;
+      }
 
+      const pendingLocal = await this.terminalState.isEnrollPending();
 
-    
-    const pendingLocal = await this.terminalState.isEnrollPending();
+      // ✅ si backend ya dice PENDING, forzar UI PENDING
+      if (result.status === 'PENDING') {
+        await this.terminalState.markPending();
+        this.activationRequested.set(true);
+        this.activationStatus.set('PENDING');
+        this.activationMessage.set(
+          'Tu solicitud de activación está en proceso. ' +
+          'Cuando el administrador la apruebe, podrás usar esta terminal.'
+        );
+        return;
+      }
 
+      // ✅ si backend dice NOT_REGISTERED, limpiamos bandera local
+      if (result.status === 'NOT_REGISTERED' && pendingLocal) {
+        await this.terminalState.clearPending();
+      }
 
-    
-    // ✅ si backend ya dice PENDING, forzar UI PENDING (sin depender del storage)
-    if (result.status === 'PENDING' || result.status === 'ALREADY_REGISTERED') {
-      await this.terminalState.markPending();
-      this.activationRequested.set(true);
-      this.activationStatus.set('PENDING');
+      // Releer bandera final
+      const finalPending = await this.terminalState.isEnrollPending();
+
+      if (finalPending) {
+        this.activationRequested.set(true);
+        this.activationStatus.set('PENDING');
+        this.activationMessage.set(
+          'Tu solicitud de activación está en proceso. ' +
+          'Cuando el administrador la apruebe, podrás usar esta terminal.'
+        );
+      } else {
+        this.activationRequested.set(false);
+        this.activationStatus.set('IDLE');
+        this.activationMessage.set(null);
+      }
+    } catch (err) {
+      console.error('[ACTIVACION] Error restaurando estado:', err);
+      this.activationStatus.set('ERROR');
       this.activationMessage.set(
-        'Tu solicitud de activación está en proceso. ' +
-        'Cuando el administrador la apruebe, podrás usar esta terminal.'
+        'No se pudo verificar el estado de la terminal. Revisa tu conexión e intenta de nuevo.'
       );
-      return;
     }
-
-    // ✅ si backend dice NOT_REGISTERED, limpiamos bandera local
-    if (result.status === 'NOT_REGISTERED' && pendingLocal) {
-      await this.terminalState.clearPending();
-    }
-
-    // Releer bandera final (después del posible clear)
-    const finalPending = await this.terminalState.isEnrollPending();
-
-    if (finalPending) {
-      this.activationRequested.set(true);
-      this.activationStatus.set('PENDING');
-      this.activationMessage.set(
-        'Tu solicitud de activación está en proceso. ' +
-        'Cuando el administrador la apruebe, podrás usar esta terminal.'
-      );
-    } else {
-      this.activationRequested.set(false);
-      this.activationStatus.set('IDLE');
-      this.activationMessage.set(null);
-    }
-  } catch (err) {
-    console.error('[ACTIVACION] Error restaurando estado:', err);
-    this.activationStatus.set('ERROR');
-    this.activationMessage.set(
-      'No se pudo verificar el estado de la terminal. Revisa tu conexión e intenta de nuevo.'
-    );
   }
-}
-
 
   // === Triple tap logo ===
   onLogoTap() {
@@ -285,7 +280,7 @@ export class ActivacionPage implements OnInit {
 
   // === Botón Activar ===
   async onActivateClick() {
-      console.log('[ACTIVACION] CLICK botón Activar');
+    console.log('[ACTIVACION] CLICK botón Activar');
 
     if (this.activationRequested()) {
       this.showToast(
@@ -364,7 +359,6 @@ export class ActivacionPage implements OnInit {
         );
         await this.showToast('Solicitud enviada correctamente.', 'success');
       } else {
-        // Si viene 409, el servicio ya marca pending, así que reflejamos PENDING
         const pending = await this.terminalState.isEnrollPending();
         if (pending) {
           this.activationRequested.set(true);
@@ -405,22 +399,19 @@ export class ActivacionPage implements OnInit {
     await loading.present();
 
     try {
-      const result = await this.terminalState.checkTerminalStatus(
-        this.getAppVersionSafe()
-      );
+      const result = await this.terminalState.checkTerminalStatus(this.getAppVersionSafe());
       const pending = await this.terminalState.isEnrollPending();
 
-      if (result.status === 'ACTIVATED') {
-  await this.terminalState.clearPending();           // ✅ IMPORTANTÍSIMO
-  this.activationRequested.set(false);
-  this.activationStatus.set('IDLE');
-  this.activationMessage.set(null);
+      if (result.status === 'ACTIVE') {
+        await this.terminalState.clearPending();
+        this.activationRequested.set(false);
+        this.activationStatus.set('IDLE');
+        this.activationMessage.set(null);
 
-  await this.showToast('Terminal activa. Cargando menú principal…', 'success');
-  await this.router.navigateByUrl('/terminal', { replaceUrl: true }); // ✅ await
-  return;
-}
-
+        await this.showToast('Terminal activa. Cargando menú principal…', 'success');
+        await this.router.navigateByUrl('/terminal', { replaceUrl: true });
+        return;
+      }
 
       if (pending) {
         this.activationRequested.set(true);

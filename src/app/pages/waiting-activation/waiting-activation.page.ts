@@ -53,16 +53,20 @@ export class WaitingActivationPage implements OnDestroy {
     this.loading = true;
     this.errorMsg = '';
 
-    const result: TerminalStatusResult = await this.terminalState.checkTerminalStatus();
-    this.loading = false;
+  const result = await this.terminalState.checkTerminalStatus();
 
-    if (result.status === 'ACTIVE') {
-      this.clearTimer();
-      this.router.navigateByUrl('/terminal-ready', { replaceUrl: true });
-    } else if (result.status === 'NOT_REGISTERED') {
-      this.errorMsg = 'La terminal aún no ha sido activada en TokenGas.';
-    } else {
-      this.errorMsg = 'No fue posible verificar el estado. Revisa la conexión.';
-    }
+if (result.status === 'ACTIVE') {
+  this.clearTimer();
+  this.router.navigateByUrl('/terminal-ready', { replaceUrl: true });
+} else if (result.status === 'PENDING') {
+  this.errorMsg = 'Solicitud en proceso. En breve se activará la terminal.';
+} else if (result.status === 'NOT_REGISTERED') {
+  this.errorMsg = 'La terminal aún no ha sido activada en TokenGas.';
+} else {
+  this.errorMsg = 'No fue posible verificar el estado. Revisa la conexión.';
+}
+
+
+
   }
 }

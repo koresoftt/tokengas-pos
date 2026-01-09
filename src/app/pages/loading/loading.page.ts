@@ -1,226 +1,204 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
-import {
-  IonContent,
-  IonSpinner,
-  IonButton,
-  IonIcon,
-} from '@ionic/angular/standalone';
+import { Component } from '@angular/core';
+import { IonicModule } from '@ionic/angular';
+import { Router } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
 import { App } from '@capacitor/app';
-import { addIcons } from 'ionicons';
-import {
-  checkmarkCircleOutline,
-  timeOutline,
-  alertCircleOutline,
-} from 'ionicons/icons';
+import { Device } from '@capacitor/device';
 
-import { TerminalStateService } from 'src/app/core/services/terminal-state.service';
 import { AppKeysService } from 'src/app/core/security/app-keys.service';
+import { AppBootstrapService, StatusResp } from 'src/app/core/services/app-bootstrap.service';
 
-
-type UiPhase =
-  | 'checking'
-  | 'activated'
-  | 'pending'
-  | 'not_registered'
-  | 'error';
+type Phase = 'checking' | 'active' | 'pending' | 'not_registered' | 'error';
 
 @Component({
   selector: 'app-loading',
   standalone: true,
-  imports: [CommonModule, IonContent, IonSpinner, IonButton, IonIcon],
+  imports: [CommonModule, IonicModule],
   templateUrl: './loading.page.html',
   styleUrls: ['./loading.page.scss'],
 })
-export class LoadingPage implements OnInit, OnDestroy {
-  phase: UiPhase = 'checking';
-  title = 'Verificando dispositivo';
-  subtitle = 'Un momento…';
-  detail = '';
-
+export class LoadingPage {
+  phase: Phase = 'checking';
   checking = true;
+
+  title = 'TokenGas POS';
+  subtitle = 'Verificando terminal…';
+  detail: string | null = null;
   canRetry = false;
 
-  private appVersion = '1.0.3';
-  private destroyed = false;
+  private running = false;
+  private bootstrappedThisRun = false;
 
-  // UX: tiempo máximo para no “colgar” la pantalla
-  private readonly REQUEST_TIMEOUT_MS = 12_000;
+  constructor(
+    private router: Router,
+    private appKeys: AppKeysService,
+    private boot: AppBootstrapService
+  ) {}
 
-  // Si está pendiente, polling corto
-  private readonly PENDING_POLL_MAX = 3;
-  private pendingPolls = 0;
+  async ionViewDidEnter() {
+    console.log('[LOADING] ionViewDidEnter fired', new Date().toISOString());
 
- constructor(
-  private terminal: TerminalStateService,
-  private router: Router,
-  private appKeys: AppKeysService
-) {
-  addIcons({ checkmarkCircleOutline, timeOutline, alertCircleOutline });
-}
-
-
-  async ngOnInit(): Promise<void> {
-  // ✅ 1) Inicializar AppKeys (Keystore nativo) y probar firma
-  try {
-    await this.appKeys.ensure();
-    const kid = await this.appKeys.getKid();
-    console.log('[APPKEYS] KID OK:', kid);
-
-    const testPayload = `ping|${Date.now()}`;
-    const signed = await this.appKeys.sign(testPayload);
-    console.log('[APPKEYS] SIGN OK:', signed);
-  } catch (e) {
-    console.error('[APPKEYS] Error inicializando keystore', e);
-    this.phase = 'error';
-    this.title = 'Error de seguridad';
-    this.subtitle = 'No se pudo inicializar el Keystore';
-    this.detail = 'Revisa permisos/instalación y vuelve a abrir la app.';
-    this.checking = false;
-    this.canRetry = false;
-    return;
+    if (this.running) return;
+    this.running = true;
+    this.bootstrappedThisRun = false;
+    await this.runFlow(false);
+    this.running = false;
   }
 
-  // ✅ 2) Obtener versión de la app (opcional)
-  try {
-    const info = await App.getInfo();
-    this.appVersion = info.version || this.appVersion;
-  } catch {
-    // noop
+  async onRetry() {
+    if (this.running) return;
+    this.running = true;
+    this.bootstrappedThisRun = false;
+    await this.runFlow(true);
+    this.running = false;
   }
 
-  // ✅ 3) Flujo legacy (temporal) mientras conectamos /app/challenge
-  await this.run();
-}
-
-  ngOnDestroy(): void {
-    this.destroyed = true;
+  private setState(phase: Phase, subtitle: string, detail?: string | null, canRetry = false) {
+    this.phase = phase;
+    this.checking = phase === 'checking';
+    this.subtitle = subtitle;
+    this.detail = detail ?? null;
+    this.canRetry = canRetry;
   }
 
-  async run(): Promise<void> {
-    this.setCheckingUi();
+  private normalizeHttpError(e: any): { status?: number; code?: string; message: string } {
+    if (e instanceof HttpErrorResponse) {
+      const code =
+        e.error?.code ||
+        e.error?.error?.code ||
+        e.error?.error ||
+        e.error?.message;
 
-    try {
-      const result = await this.withTimeout(
-        this.terminal.checkTerminalStatus(this.appVersion),
-        this.REQUEST_TIMEOUT_MS
-      );
+      const msg = code
+        ? `${e.status} ${e.statusText} (${code})`
+        : `${e.status} ${e.statusText}`;
 
-      if (this.destroyed) return;
-
-      switch (result.status) {
-        case 'ACTIVATED':
-          this.phase = 'activated';
-          this.title = 'Terminal activa';
-          this.subtitle = 'Iniciando POS…';
-          this.checking = true;
-          this.canRetry = false;
-
-          await this.sleep(500);
-          if (this.destroyed) return;
-
-          await this.router.navigateByUrl('/terminal', {
-            replaceUrl: true,
-          });
-          return;
-
-        case 'PENDING':
-          this.phase = 'pending';
-          this.title = 'Solicitud en proceso';
-          this.subtitle = 'Estamos esperando aprobación…';
-          this.detail = 'Puedes dejar esta pantalla abierta.';
-
-          if (this.pendingPolls < this.PENDING_POLL_MAX) {
-            this.pendingPolls++;
-            this.checking = true;
-            this.canRetry = false;
-            await this.sleep(2500);
-            if (this.destroyed) return;
-            return this.run();
-          }
-
-          this.checking = false;
-          this.canRetry = true;
-          this.detail = 'Si ya fue aprobada, toca “Reintentar”.';
-          return;
-
-        case 'ALREADY_REGISTERED':
-          this.phase = 'pending';
-          this.title = 'Dispositivo registrado';
-          this.subtitle = 'Continuemos con activación…';
-          this.checking = true;
-          this.canRetry = false;
-
-          await this.sleep(300);
-          if (this.destroyed) return;
-
-          await this.router.navigateByUrl('/activacion', {
-            replaceUrl: true,
-          });
-          return;
-
-        case 'NOT_REGISTERED':
-        default:
-          this.phase = 'not_registered';
-          this.title = 'Listo para activar';
-          this.subtitle = 'Inicia el proceso de activación.';
-          this.checking = true;
-          this.canRetry = false;
-
-          await this.sleep(200);
-          if (this.destroyed) return;
-
-          await this.router.navigateByUrl('/activacion', {
-            replaceUrl: true,
-          });
-          return;
-      }
-    } catch (err) {
-      if (this.destroyed) return;
-
-      console.error('[LOADING] Error verificando estado:', err);
-
-      this.phase = 'error';
-      this.title = 'No se pudo verificar';
-      this.subtitle = 'Revisa tu conexión e inténtalo de nuevo.';
-      this.detail = 'Si el problema persiste, contacta a soporte.';
-      this.checking = false;
-      this.canRetry = true;
+      return { status: e.status, code: String(code || ''), message: msg };
     }
+    return { message: String(e?.message || e) };
   }
 
-  onRetry(): void {
-    this.pendingPolls = 0;
-    this.run();
+  private extractCode(e: any): string {
+    if (e instanceof HttpErrorResponse) {
+      return String(
+        e.error?.code ||
+          e.error?.error?.code ||
+          e.error?.error ||
+          e.error?.message ||
+          ''
+      );
+    }
+    return String(e?.code || e?.message || '');
   }
 
-  private setCheckingUi(): void {
-    this.phase = 'checking';
-    this.title = 'Verificando dispositivo';
-    this.subtitle = 'Validando estado del terminal…';
-    this.detail = '';
-    this.checking = true;
-    this.canRetry = false;
+  private isAppTsSkew(err: any): boolean {
+    return this.extractCode(err).includes('APP_TS_SKEW');
   }
 
-  private async withTimeout<T>(
-    promise: Promise<T>,
-    ms: number
-  ): Promise<T> {
-    let t: any;
-    const timeout = new Promise<never>((_, reject) => {
-      t = setTimeout(() => reject(new Error(`Timeout ${ms}ms`)), ms);
+  private shouldAutoBootstrap(err: any): boolean {
+    const code = this.extractCode(err);
+
+    if (code.includes('APP_KEY_NOT_FOUND')) return true;
+    if (code.includes('APP_HEADERS_MISSING')) return true;
+    if (code.includes('APP_SIGNATURE_INVALID')) return true;
+
+    // fallback por status genérico
+    if (err instanceof HttpErrorResponse) {
+      if (err.status === 401 || err.status === 403) return true;
+    }
+    return false;
+  }
+
+  private async routeByStatus(st: StatusResp) {
+    const s = String(st?.status || '').toUpperCase();
+
+    if (s === 'ACTIVE') {
+      this.setState('active', 'Terminal activa', null, false);
+      await this.router.navigateByUrl('/home', { replaceUrl: true });
+      return;
+    }
+
+    if (s === 'PENDING') {
+      this.setState('pending', 'Solicitud en proceso', 'Espera autorización en horario laboral.', false);
+      await this.router.navigateByUrl('/waiting', { replaceUrl: true });
+      return;
+    }
+
+    this.setState('not_registered', 'Terminal no registrada', null, false);
+    await this.router.navigateByUrl('/activacion', { replaceUrl: true });
+  }
+
+  private async doBootstrap(infoVersion: string) {
+    // Asegura que exista KID/keys del lado app
+    await this.appKeys.ensure();
+
+    const dev = await Device.getInfo();
+    const modelo = `${dev.manufacturer || ''} ${dev.model || ''}`.trim() || 'UNKNOWN';
+    const app_version = infoVersion || '1.0.0';
+
+    // ✅ bootstrap 1 sola vez por corrida (evita loops)
+    await this.boot.bootstrap({
+      app_id: 'tokengas-pos',
+      app_version,
+      modelo,
     });
 
-    try {
-      return await Promise.race([promise, timeout]);
-    } finally {
-      clearTimeout(t);
-    }
+    this.bootstrappedThisRun = true;
   }
 
-  private sleep(ms: number): Promise<void> {
-    return new Promise((r) => setTimeout(r, ms));
+  private async runFlow(fromRetry: boolean) {
+    try {
+      this.setState('checking', fromRetry ? 'Reintentando…' : 'Verificando terminal…', null, false);
+
+      const info = await App.getInfo();
+
+      // 1) Intento #1: status (NO bootstrap primero)
+      try {
+        const st = await this.boot.meStatus();
+        await this.routeByStatus(st);
+        return;
+      } catch (e1) {
+        // Hora desfasada: NO bootstrap
+        if (this.isAppTsSkew(e1)) {
+          this.setState(
+            'error',
+            'Hora del dispositivo desfasada',
+            'Activa “Fecha y hora automáticas” y “Zona horaria automática”, conecta a internet y reintenta.',
+            true
+          );
+          return;
+        }
+
+        // Si no aplica bootstrap, mostramos error tal cual
+        if (!this.shouldAutoBootstrap(e1)) {
+          const norm = this.normalizeHttpError(e1);
+          this.setState('error', 'No se pudo validar terminal', norm.message, true);
+          return;
+        }
+
+        // 2) Bootstrap (solo una vez)
+        if (!this.bootstrappedThisRun) {
+          this.setState('checking', 'Registrando dispositivo…', 'Bootstrap (llaves + registro)…', false);
+          await this.doBootstrap(info.version || '');
+        }
+
+        // 3) Intento #2: status ya con KID registrado
+        this.setState('checking', 'Verificando terminal…', null, false);
+        const st2 = await this.boot.meStatus();
+        await this.routeByStatus(st2);
+        return;
+      }
+    } catch (e) {
+      const norm = this.normalizeHttpError(e);
+      this.setState('error', 'Error inesperado', norm.message, true);
+      console.error('[LOADING] runFlow error:', e);
+
+      try {
+        const nowEpoch = Math.floor(Date.now() / 1000);
+        const devInfo = await Device.getInfo();
+        console.log('[TIME DEBUG]', { nowEpoch, iso: new Date().toISOString(), devInfo });
+      } catch {}
+    }
   }
 }

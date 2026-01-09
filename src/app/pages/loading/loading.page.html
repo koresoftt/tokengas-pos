@@ -1,44 +1,49 @@
-<ion-content class="loading-screen">
+<ion-content class="ion-padding">
   <div class="wrap">
-    <div class="card">
-      <img src="assets/logo_tg.png" class="logo" alt="TokenGas" />
+    <div class="top">
+      <img class="logo" src="assets/logo_tg.png" alt="TokenGas" />
+    </div>
+<ion-icon name="alert-circle-outline"></ion-icon>
+<ion-icon name="refresh-outline"></ion-icon>
 
-      <div class="status">
-        <ion-spinner *ngIf="checking" name="crescent"></ion-spinner>
+    <div class="status">
+      <ion-spinner *ngIf="checking" name="crescent"></ion-spinner>
 
-        <ion-icon
-          *ngIf="!checking && phase === 'error'"
-          name="alert-circle-outline"
-        ></ion-icon>
+      <ion-icon
+        *ngIf="!checking && phase === 'active'"
+        name="checkmark-circle-outline"
+        class="ok"
+      ></ion-icon>
 
-        <ion-icon
-          *ngIf="phase === 'pending'"
-          name="time-outline"
-        ></ion-icon>
+      <ion-icon
+        *ngIf="!checking && phase === 'pending'"
+        name="time-outline"
+        class="pending"
+      ></ion-icon>
 
-        <ion-icon
-          *ngIf="phase === 'activated'"
-          name="checkmark-circle-outline"
-        ></ion-icon>
-      </div>
-
-      <h1 class="title">{{ title }}</h1>
-      <p class="subtitle">{{ subtitle }}</p>
-
-      <p class="detail" *ngIf="detail">{{ detail }}</p>
-
-      <ion-button
-        expand="block"
-        class="btn"
-        *ngIf="!checking && canRetry"
-        (click)="onRetry()"
-      >
-        Reintentar
-      </ion-button>
+      <ion-icon
+        *ngIf="!checking && (phase === 'not_registered' || phase === 'error')"
+        name="alert-circle-outline"
+        class="warn"
+      ></ion-icon>
     </div>
 
+    <h1 class="title">{{ title }}</h1>
+    <p class="subtitle">{{ subtitle }}</p>
+
+    <p class="detail" *ngIf="detail">{{ detail }}</p>
+
+    <ion-button
+      expand="block"
+      fill="outline"
+      *ngIf="!checking && canRetry"
+      (click)="onRetry()"
+    >
+      Reintentar
+    </ion-button>
+
     <div class="hint" *ngIf="phase === 'pending' && !canRetry">
-      Actualizando automáticamente…
+      Si se queda mucho tiempo, revisa conexión y que la solicitud esté autorizada.
     </div>
   </div>
 </ion-content>
