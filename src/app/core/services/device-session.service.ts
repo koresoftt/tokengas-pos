@@ -1,9 +1,10 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { Preferences } from '@capacitor/preferences';
-import { Device } from '@capacitor/device';
 import { environment } from 'src/environments/environment';
+
+import { AppBootstrapService } from 'src/app/core/services/app-bootstrap.service';
 
 interface DeviceLoginResponse {
   ok: boolean;
@@ -16,7 +17,12 @@ export class DeviceSessionService {
   private readonly STORAGE_KEY = 'tg_device_session';
   private inMemory: string | null = null;
 
-  constructor(private http: HttpClient) {}
+  private baseUrlRaw = (environment.baseUrl || '').replace(/\/+$/, '');
+
+  constructor(
+    private http: HttpClient,
+    private bootstrap: AppBootstrapService,
+  ) {}
 
   async get(): Promise<string | null> {
     if (this.inMemory) return this.inMemory;
@@ -31,13 +37,20 @@ export class DeviceSessionService {
   }
 
   async login(appVersion: string): Promise<string> {
-    const uid = (await Device.getId()).identifier || 'UNKNOWN_DEVICE';
+    if (!this.baseUrlRaw) throw new Error('environment.baseUrl missing');
+
+    // ✅ MISMO UID que usa bootstrap (estable y persistido)
+    const uid = await this.bootstrap.getDeviceUid();
+
+    const path = '/auth/device-login';
+    const url = `${this.baseUrlRaw}${path}`;
+    const body = { device_uid: uid, app_version: appVersion };
+
+    // ✅ Firma Android Key (X-App-*)
+    const headers: HttpHeaders = await this.bootstrap.signedHeaders('POST', path, body);
 
     const res = await firstValueFrom(
-      this.http.post<DeviceLoginResponse>(
-        `${environment.baseUrl}/auth/device-login`,
-        { device_uid: uid, app_version: appVersion }
-      )
+      this.http.post<DeviceLoginResponse>(url, body, { headers })
     );
 
     if (!res?.ok || !res.device_session) {

@@ -205,7 +205,7 @@ export class AppBootstrapService {
     return `v1|${ts}|${nonce}|${method.toUpperCase()}|${path}|${bodyHash}`;
   }
 
-  // Firma base (X-App-*)
+   // Firma base (X-App-*)
   private async signedHeadersBase(method: string, path: string, body: any): Promise<HttpHeaders> {
     const ts = this.nowSec();
     const nonce = this.genNonceClient();
@@ -222,6 +222,16 @@ export class AppBootstrapService {
       'X-App-SigAlg': 'ES256',
       'X-App-Sign': signature,
     });
+  }
+
+  // ✅ NUEVO: método público para firmar requests desde otros services
+  async signedHeaders(method: string, path: string, body: any): Promise<HttpHeaders> {
+    return this.signedHeadersBase(method, path, body);
+  }
+
+  // ✅ (Opcional) Exponer JWT si quieres reutilizarlo
+  async getJwt(): Promise<string | null> {
+    return this.getAccessToken();
   }
 
   // ----------------------------

@@ -4,7 +4,7 @@ import { Preferences } from '@capacitor/preferences';
 import { AppBootstrapService, StatusResp } from './app-bootstrap.service';
 import { DeviceSessionService } from './device-session.service';
 import { firstValueFrom } from 'rxjs';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { environment } from 'src/environments/environment';
 
 export type TerminalStatus = 'ACTIVE' | 'PENDING' | 'NOT_REGISTERED' | 'ERROR';
@@ -31,7 +31,7 @@ const PENDING_KEY = 'tg_enroll_pending';
 
 @Injectable({ providedIn: 'root' })
 export class TerminalStateService {
-  private baseUrlRaw = (environment.baseUrl || 'https://app-api.koresoft.mx').replace(/\/+$/, '');
+  private baseUrlRaw = (environment.baseUrl || '').replace(/\/+$/, '');
 
   constructor(
     private bootstrap: AppBootstrapService,
@@ -81,45 +81,34 @@ export class TerminalStateService {
   }
 
   // -----------------------------
-  // Crear solicitud de activación (tu flujo actual)
+  // Crear solicitud de activación (YA firmada Android Key)
   // -----------------------------
-  async createActivationRequest(payload: ActivationRequestPayload): Promise<ActivationRequestResp> {
-    try {
-      // Asegura sesión device (si tu backend la usa aquí)
-      const bearer = await this.session.ensure(payload.app_version);
+ async createActivationRequest(payload: ActivationRequestPayload): Promise<ActivationRequestResp> {
+  try {
+    const jwt = await this.bootstrap.getJwt();
+    if (!jwt) return { ok: false, message: 'NO_TOKEN' };
 
-      const url = `${this.baseUrlRaw}/enroll/requests`;
+    const path = '/app/enroll/requests';
+    const url = `${this.baseUrlRaw}${path}`;
 
-      const resp = await firstValueFrom(
-        this.http.post<ActivationRequestResp>(
-          url,
-          payload,
-          {
-            headers: {
-              Authorization: `Bearer ${bearer}`,
-              'Content-Type': 'application/json',
-              Accept: 'application/json',
-            }
-          }
-        )
-      );
+    let headers = await this.bootstrap.signedHeaders('POST', path, payload);
+    headers = headers
+      .set('Authorization', `Bearer ${jwt}`)
+      .set('Accept', 'application/json')
+      .set('Content-Type', 'application/json');
 
-      if (resp?.ok) {
-        await this.markPending();
-      }
+    const resp = await firstValueFrom(
+      this.http.post<ActivationRequestResp>(url, payload, { headers })
+    );
 
-      return resp || { ok: false, message: 'empty_response' };
-    } catch (e: any) {
-      const msg = e?.error?.message || e?.message || 'request_failed';
-
-      // Si el backend responde algo tipo 409 o “ya existe”, marcamos pending para UX
-      const statusCode = e?.status || e?.error?.status;
-      if (statusCode === 409) {
-        await this.markPending();
-        return { ok: false, message: 'Ya existe una solicitud registrada.' };
-      }
-
-      return { ok: false, message: msg };
-    }
+    if (resp?.ok) await this.markPending();
+    return resp || { ok: false, message: 'empty_response' };
+  } catch (e: any) {
+    const msg = e?.error?.message || e?.message || 'request_failed';
+    return { ok: false, message: msg };
   }
+}
+
+
+
 }
