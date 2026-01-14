@@ -47,6 +47,19 @@ export class AppBootstrapService {
   ) {}
 
   // ----------------------------
+  // Detectar LIVE reload (-l --external)
+  // ----------------------------
+  private isLiveReload(): boolean {
+    // En -l --external tu webview carga desde https://localhost (dev server)
+    try {
+      const o = String(globalThis?.location?.origin || '').toLowerCase();
+      return o.includes('localhost');
+    } catch {
+      return false;
+    }
+  }
+
+  // ----------------------------
   // UID estable
   // ----------------------------
   async getDeviceUid(): Promise<string> {
@@ -85,12 +98,10 @@ export class AppBootstrapService {
   private genNonceClient(): string {
     const bytes = new Uint8Array(16);
 
-    // WebCrypto (si existe)
     const c = (globalThis as any).crypto;
     if (c?.getRandomValues) {
       c.getRandomValues(bytes);
     } else {
-      // fallback (dev)
       for (let i = 0; i < bytes.length; i++) bytes[i] = (Math.random() * 256) | 0;
     }
 
@@ -118,7 +129,6 @@ export class AppBootstrapService {
     const c = (globalThis as any).crypto;
     const subtle = c?.subtle;
 
-    // ✅ En HTTP (no secure context) subtle suele venir undefined → fallback
     if (subtle?.digest) {
       const hash = await subtle.digest('SHA-256', data);
       return Array.from(new Uint8Array(hash))
@@ -126,14 +136,12 @@ export class AppBootstrapService {
         .join('');
     }
 
-    // Fallback puro JS
     const hashBytes = this.sha256Fallback(data);
     return Array.from(hashBytes)
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
   }
 
-  // SHA-256 fallback (compacto)
   private sha256Fallback(msg: Uint8Array): Uint8Array {
     const K = new Uint32Array([
       0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
@@ -205,13 +213,18 @@ export class AppBootstrapService {
     return `v1|${ts}|${nonce}|${method.toUpperCase()}|${path}|${bodyHash}`;
   }
 
-   // Firma base (X-App-*)
+  // Firma base (X-App-*)
   private async signedHeadersBase(method: string, path: string, body: any): Promise<HttpHeaders> {
     const ts = this.nowSec();
     const nonce = this.genNonceClient();
 
     const canon = await this.canonical(method, path, ts, nonce, body);
-    const { kid, signature } = await this.appKeys.sign(canon);
+    const { kid, signature } = await this.withTimeout(
+  this.appKeys.sign(canon),
+  6000,
+  'APPKEYS_SIGN_TIMEOUT'
+);
+
 
     return new HttpHeaders({
       'Content-Type': 'application/json',
@@ -224,29 +237,71 @@ export class AppBootstrapService {
     });
   }
 
-  // ✅ NUEVO: método público para firmar requests desde otros services
+  // ✅ público
   async signedHeaders(method: string, path: string, body: any): Promise<HttpHeaders> {
     return this.signedHeadersBase(method, path, body);
   }
 
-  // ✅ (Opcional) Exponer JWT si quieres reutilizarlo
   async getJwt(): Promise<string | null> {
     return this.getAccessToken();
   }
 
   // ----------------------------
-  // STATUS: requiere JWT, y tu backend rechaza X-Device-Uid aquí
-  // ----------------------------
-  async meStatus(): Promise<StatusResp> {
-    const path = '/app/me/status';
-    const token = await this.getAccessToken();
-    if (!token) throw { code: 'NO_TOKEN', message: 'No access token yet' };
+// STATUS: requiere JWT
+// ----------------------------
+async meStatus(): Promise<StatusResp> {
+  const path = '/app/me/status';
 
-    let headers = await this.signedHeadersBase('GET', path, null);
-    headers = headers.set('Authorization', `Bearer ${token}`);
+  const token = await this.getAccessToken();
+  if (!token) throw { code: 'NO_TOKEN', message: 'No access token yet' };
 
-    return await firstValueFrom(this.http.get<StatusResp>(this.url(path), { headers }));
+  let headers = await this.signedHeadersBase('GET', path, null);
+  headers = headers.set('Authorization', `Bearer ${token}`);
+
+  try {
+    return await firstValueFrom(
+      this.http.get<StatusResp>(this.url(path), { headers })
+    );
+  } catch (e: any) {
+    const code = String(
+      e?.error?.code ||
+      e?.error?.error?.code ||
+      e?.error?.error ||
+      e?.error?.message ||
+      ''
+    ).toUpperCase();
+
+    // ✅ Solo borrar token cuando realmente es token inválido / no autorizado
+    // 401 casi siempre significa token inválido/expirado
+    if (e?.status === 401) {
+      await this.clearAccessToken();
+    }
+
+    // 403 NO siempre es token inválido (puede ser firma/headers/appSig)
+    // Solo limpia si el backend lo marca explícitamente como token inválido
+    if (e?.status === 403) {
+      if (
+        code.includes('INVALID_TOKEN') ||
+        code.includes('MISSING_BEARER') ||
+        code.includes('INVALID_SCOPE')
+      ) {
+        await this.clearAccessToken();
+      }
+    }
+
+    throw e;
   }
+}
+async ensureKeys(): Promise<void> {
+  await this.appKeys.ensure();
+}
+
+private async withTimeout<T>(p: Promise<T>, ms = 6000, tag = 'timeout'): Promise<T> {
+  return await Promise.race([
+    p,
+    new Promise<T>((_, rej) => setTimeout(() => rej(new Error(tag)), ms)),
+  ]);
+}
 
   // ----------------------------
   // BOOTSTRAP: sí permite X-Device-Uid y no usa JWT
@@ -269,9 +324,14 @@ export class AppBootstrapService {
       this.http.post<BootstrapChallengeResp>(this.url(challengePath), challengeBody, { headers: h1 })
     );
 
-    // 2) complete (payload EXACTO del backend)
+    // 2) complete
     const payload = `${challenge.challenge_id}|${challenge.challenge}|${deviceUid}|${nonce_client}`;
-    const signed = await this.appKeys.sign(payload);
+    const signed = await this.withTimeout(
+  this.appKeys.sign(payload),
+  6000,
+  'APPKEYS_SIGN_TIMEOUT_BOOTSTRAP'
+);
+
 
     const completePath = '/app/bootstrap/complete';
     const completeBody = {

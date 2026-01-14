@@ -1,16 +1,23 @@
+// src/app/core/services/terminal-state.service.ts
 import { Injectable } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
+import { firstValueFrom } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
+import { environment } from 'src/environments/environment';
 
 import { AppBootstrapService, StatusResp } from './app-bootstrap.service';
 import { DeviceSessionService } from './device-session.service';
-import { firstValueFrom } from 'rxjs';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { environment } from 'src/environments/environment';
 
-export type TerminalStatus = 'ACTIVE' | 'PENDING' | 'NOT_REGISTERED' | 'ERROR';
+export type TerminalStatus =
+  | 'ACTIVE'
+  | 'PENDING'
+  | 'NOT_REGISTERED'
+  | 'INACTIVE'
+  | 'REJECTED'
+  | 'ERROR';
+
 export type TerminalStatusResult = { status: TerminalStatus; raw?: any };
 
-// ✅ Payload que tu ActivacionPage arma hoy
 export type ActivationRequestPayload = {
   app_version: string;
   modelo: string;
@@ -31,7 +38,8 @@ const PENDING_KEY = 'tg_enroll_pending';
 
 @Injectable({ providedIn: 'root' })
 export class TerminalStateService {
-  private baseUrlRaw = (environment.baseUrl || '').replace(/\/+$/, '');
+  // ✅ fallback duro por si prod trae baseUrl vacío
+  private baseUrlRaw = (environment.baseUrl || 'https://app-api.koresoft.mx').replace(/\/+$/, '');
 
   constructor(
     private bootstrap: AppBootstrapService,
@@ -39,16 +47,10 @@ export class TerminalStateService {
     private session: DeviceSessionService,
   ) {}
 
-  // -----------------------------
-  // UID estable (lo toma del bootstrap service)
-  // -----------------------------
   async getDeviceUid(): Promise<string> {
     return this.bootstrap.getDeviceUid();
   }
 
-  // -----------------------------
-  // Pending local flag
-  // -----------------------------
   async isEnrollPending(): Promise<boolean> {
     const v = await Preferences.get({ key: PENDING_KEY });
     return v.value === '1';
@@ -62,53 +64,66 @@ export class TerminalStateService {
     await Preferences.remove({ key: PENDING_KEY });
   }
 
-  // -----------------------------
-  // Status desde backend (firma X-App-* ya la hace AppBootstrapService)
-  // -----------------------------
-  async checkTerminalStatus(_appVersion?: string): Promise<TerminalStatusResult> {
-    try {
-      const r: StatusResp = await this.bootstrap.meStatus();
-
-      const s = String(r?.status || '').toUpperCase();
-      if (s === 'ACTIVE') return { status: 'ACTIVE', raw: r };
-      if (s === 'PENDING') return { status: 'PENDING', raw: r };
-      if (s === 'NOT_REGISTERED') return { status: 'NOT_REGISTERED', raw: r };
-
-      return { status: 'PENDING', raw: r };
-    } catch (e: any) {
-      return { status: 'ERROR', raw: { message: e?.message || String(e) } };
-    }
-  }
-
-  // -----------------------------
-  // Crear solicitud de activación (YA firmada Android Key)
-  // -----------------------------
- async createActivationRequest(payload: ActivationRequestPayload): Promise<ActivationRequestResp> {
+ async checkTerminalStatus(): Promise<TerminalStatusResult> {
   try {
+    const r: StatusResp = await this.bootstrap.meStatus();
+    const s = String(r?.status || '').toUpperCase();
+
+    if (s === 'ACTIVE') return { status: 'ACTIVE', raw: r };
+    if (s === 'PENDING') return { status: 'PENDING', raw: r };
+
+    // ✅ todo lo que NO sea ACTIVE/PENDING lo tratamos como "no registrada"
+    // (incluye NOT_REGISTERED, INACTIVE, REJECTED, etc.)
+    return { status: 'NOT_REGISTERED', raw: r };
+
+  } catch (e: any) {
+    return { status: 'ERROR', raw: { message: e?.message || String(e), error: e } };
+  }
+}
+
+async ensureAppKeys(): Promise<void> {
+  await this.bootstrap.ensureKeys();
+}
+
+
+ async createActivationRequest(payload: ActivationRequestPayload): Promise<ActivationRequestResp> {
+  console.log('[ENROLL] 1 start');
+  console.log('[ENROLL] baseUrlRaw=', this.baseUrlRaw);
+
+  const path = '/app/enroll/requests';
+  const url = `${this.baseUrlRaw}${path}`;
+
+  try {
+    console.log('[ENROLL] 2 before getJwt');
     const jwt = await this.bootstrap.getJwt();
+    console.log('[ENROLL] 3 after getJwt', !!jwt);
+
     if (!jwt) return { ok: false, message: 'NO_TOKEN' };
 
-    const path = '/app/enroll/requests';
-    const url = `${this.baseUrlRaw}${path}`;
-
+    console.log('[ENROLL] 4 before signedHeaders');
     let headers = await this.bootstrap.signedHeaders('POST', path, payload);
+    console.log('[ENROLL] 5 after signedHeaders');
+
     headers = headers
       .set('Authorization', `Bearer ${jwt}`)
       .set('Accept', 'application/json')
       .set('Content-Type', 'application/json');
 
+    console.log('[ENROLL] 6 before http.post', url);
+
     const resp = await firstValueFrom(
       this.http.post<ActivationRequestResp>(url, payload, { headers })
     );
 
+    console.log('[ENROLL] 7 after http.post', resp);
+
     if (resp?.ok) await this.markPending();
     return resp || { ok: false, message: 'empty_response' };
+
   } catch (e: any) {
-    const msg = e?.error?.message || e?.message || 'request_failed';
-    return { ok: false, message: msg };
+    console.error('[ENROLL] catch', e);
+    return { ok: false, message: e?.message || 'request_failed' };
   }
 }
-
-
 
 }

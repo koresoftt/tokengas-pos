@@ -36,7 +36,8 @@ export class StartupPage implements OnInit {
       const appVersion = info.version || '1.0.0';
 
       this.message = 'Verificando estado…';
-      const r = await this.terminalState.checkTerminalStatus(appVersion);
+      const r = await this.terminalState.checkTerminalStatus();
+
 
       const s = String(r?.status || '').toUpperCase().trim();
 

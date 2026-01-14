@@ -5,7 +5,7 @@ import {
   IonCardContent, IonText, IonSpinner
 } from '@ionic/angular/standalone';
 import { Router } from '@angular/router';
-import { TerminalStateService, TerminalStatusResult } from 'src/app/core/services/terminal-state.service';
+import { TerminalStateService } from 'src/app/core/services/terminal-state.service';
 
 @Component({
   selector: 'app-waiting-activation',
@@ -30,7 +30,6 @@ export class WaitingActivationPage implements OnDestroy {
 
   ionViewWillEnter() {
     this.check();
-    // auto-reintento cada 20 segundos
     this.intervalId = setInterval(() => this.check(), 20000);
   }
 
@@ -53,20 +52,36 @@ export class WaitingActivationPage implements OnDestroy {
     this.loading = true;
     this.errorMsg = '';
 
-  const result = await this.terminalState.checkTerminalStatus();
+    try {
+      const result = await this.terminalState.checkTerminalStatus();
 
-if (result.status === 'ACTIVE') {
-  this.clearTimer();
-  this.router.navigateByUrl('/terminal-ready', { replaceUrl: true });
-} else if (result.status === 'PENDING') {
-  this.errorMsg = 'Solicitud en proceso. En breve se activará la terminal.';
-} else if (result.status === 'NOT_REGISTERED') {
-  this.errorMsg = 'La terminal aún no ha sido activada en TokenGas.';
-} else {
-  this.errorMsg = 'No fue posible verificar el estado. Revisa la conexión.';
-}
+      if (result.status === 'ACTIVE') {
+        this.clearTimer();
+        await this.terminalState.clearPending();
+        await this.router.navigateByUrl('/terminal', { replaceUrl: true });
+        return;
+      }
 
+      if (result.status === 'PENDING') {
+        this.errorMsg = 'Solicitud en proceso. En breve se activará la terminal.';
+        return;
+      }
 
+      if (result.status === 'INACTIVE' || result.status === 'NOT_REGISTERED') {
+        this.clearTimer();
+        await this.router.navigateByUrl('/activacion', { replaceUrl: true });
+        return;
+      }
 
+      if (result.status === 'REJECTED') {
+        this.clearTimer();
+        await this.router.navigateByUrl('/activacion', { replaceUrl: true });
+        return;
+      }
+
+      this.errorMsg = 'No fue posible verificar el estado. Revisa la conexión.';
+    } finally {
+      this.loading = false;
+    }
   }
 }

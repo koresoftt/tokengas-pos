@@ -176,4 +176,17 @@
     </ion-card>
     -->
   </div>
+
+  <!-- ✅ Modal operador (IonAlert standalone) -->
+<ion-alert
+  [isOpen]="showOperatorPrompt()"
+  header="Activar terminal"
+  message="Ingresa el nombre/código del operador."
+  [inputs]="operatorAlertInputs"
+  [buttons]="operatorAlertButtons"
+  (didDismiss)="onOperatorDismiss($event)"
+></ion-alert>
+
+
+
 </ion-content>

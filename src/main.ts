@@ -26,6 +26,8 @@ if (environment.production) {
   enableProdMode();
 }
 
+console.log('[BUILD]', '2026-01-13-A');
+
 bootstrapApplication(AppComponent, {
   providers: [
     provideIonicAngular(),

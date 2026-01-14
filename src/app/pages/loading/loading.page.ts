@@ -9,7 +9,7 @@ import { Device } from '@capacitor/device';
 import { AppKeysService } from 'src/app/core/security/app-keys.service';
 import { AppBootstrapService, StatusResp } from 'src/app/core/services/app-bootstrap.service';
 
-type Phase = 'checking' | 'active' | 'pending' | 'not_registered' | 'error';
+type Phase = 'checking' | 'active' | 'pending' | 'inactive' | 'not_registered' | 'rejected' | 'error';
 
 @Component({
   selector: 'app-loading',
@@ -111,23 +111,37 @@ export class LoadingPage {
   }
 
   private async routeByStatus(st: StatusResp) {
-    const s = String(st?.status || '').toUpperCase();
+  const s = String(st?.status || '').toUpperCase();
 
-    if (s === 'ACTIVE') {
-      this.setState('active', 'Terminal activa', null, false);
-      await this.router.navigateByUrl('/home', { replaceUrl: true });
-      return;
-    }
-
-    if (s === 'PENDING') {
-      this.setState('pending', 'Solicitud en proceso', 'Espera autorización en horario laboral.', false);
-      await this.router.navigateByUrl('/waiting', { replaceUrl: true });
-      return;
-    }
-
-    this.setState('not_registered', 'Terminal no registrada', null, false);
-    await this.router.navigateByUrl('/activacion', { replaceUrl: true });
+  if (s === 'ACTIVE') {
+    this.setState('active', 'Terminal activa', null, false);
+    await this.router.navigateByUrl('/terminal', { replaceUrl: true });
+    return;
   }
+
+  if (s === 'PENDING') {
+    this.setState('pending', 'Solicitud en proceso', 'Espera autorización en horario laboral.', false);
+    await this.router.navigateByUrl('/waiting', { replaceUrl: true });
+    return;
+  }
+
+  if (s === 'INACTIVE') {
+    this.setState('inactive', 'Terminal inactiva', 'Esta terminal existe pero no está activa. Puedes solicitar activación.', false);
+    await this.router.navigateByUrl('/activacion', { replaceUrl: true });
+    return;
+  }
+
+  if (s === 'REJECTED') {
+    this.setState('rejected', 'Solicitud rechazada', 'Contacta al administrador o vuelve a solicitar.', false);
+    await this.router.navigateByUrl('/activacion', { replaceUrl: true });
+    return;
+  }
+
+  // NOT_REGISTERED
+  this.setState('not_registered', 'Terminal no registrada', null, false);
+  await this.router.navigateByUrl('/activacion', { replaceUrl: true });
+}
+
 
   private async doBootstrap(infoVersion: string) {
     // Asegura que exista KID/keys del lado app
@@ -147,58 +161,91 @@ export class LoadingPage {
     this.bootstrappedThisRun = true;
   }
 
-  private async runFlow(fromRetry: boolean) {
+ private async runFlow(fromRetry: boolean) {
+  console.log('[FLOW] start', { fromRetry, at: new Date().toISOString() });
+
+  try {
+    this.setState('checking', fromRetry ? 'Reintentando…' : 'Verificando terminal…', null, false);
+
+    console.log('[FLOW] before App.getInfo');
+    const info = await App.getInfo();
+    console.log('[FLOW] after App.getInfo', info);
+
+    // 1) Intento #1: status (NO bootstrap primero)
     try {
-      this.setState('checking', fromRetry ? 'Reintentando…' : 'Verificando terminal…', null, false);
+      console.log('[FLOW] try#1 before meStatus');
+      const st = await this.boot.meStatus();
+      console.log('[FLOW] try#1 after meStatus', st);
 
-      const info = await App.getInfo();
+      await this.routeByStatus(st);
+      return;
 
-      // 1) Intento #1: status (NO bootstrap primero)
-      try {
-        const st = await this.boot.meStatus();
-        await this.routeByStatus(st);
-        return;
-      } catch (e1) {
-        // Hora desfasada: NO bootstrap
-        if (this.isAppTsSkew(e1)) {
-          this.setState(
-            'error',
-            'Hora del dispositivo desfasada',
-            'Activa “Fecha y hora automáticas” y “Zona horaria automática”, conecta a internet y reintenta.',
-            true
-          );
-          return;
-        }
+    } catch (e1: any) {
+      console.error('[FLOW] try#1 error', e1);
 
-        // Si no aplica bootstrap, mostramos error tal cual
-        if (!this.shouldAutoBootstrap(e1)) {
-          const norm = this.normalizeHttpError(e1);
-          this.setState('error', 'No se pudo validar terminal', norm.message, true);
-          return;
-        }
+      // ✅ Caso CLAVE: no hay token todavía -> bootstrap directo
+      const code = this.extractCode(e1);
+      if (code.includes('NO_TOKEN')) {
+        console.log('[FLOW] NO_TOKEN -> bootstrap');
+        this.setState('checking', 'Registrando dispositivo…', 'Bootstrap (token)…', false);
 
-        // 2) Bootstrap (solo una vez)
         if (!this.bootstrappedThisRun) {
-          this.setState('checking', 'Registrando dispositivo…', 'Bootstrap (llaves + registro)…', false);
           await this.doBootstrap(info.version || '');
         }
 
-        // 3) Intento #2: status ya con KID registrado
-        this.setState('checking', 'Verificando terminal…', null, false);
+        console.log('[FLOW] after bootstrap -> meStatus');
         const st2 = await this.boot.meStatus();
+        console.log('[FLOW] after bootstrap -> meStatus ok', st2);
+
         await this.routeByStatus(st2);
         return;
       }
-    } catch (e) {
-      const norm = this.normalizeHttpError(e);
-      this.setState('error', 'Error inesperado', norm.message, true);
-      console.error('[LOADING] runFlow error:', e);
 
-      try {
-        const nowEpoch = Math.floor(Date.now() / 1000);
-        const devInfo = await Device.getInfo();
-        console.log('[TIME DEBUG]', { nowEpoch, iso: new Date().toISOString(), devInfo });
-      } catch {}
+      // Hora desfasada: NO bootstrap
+      if (this.isAppTsSkew(e1)) {
+        this.setState(
+          'error',
+          'Hora del dispositivo desfasada',
+          'Activa “Fecha y hora automáticas” y “Zona horaria automática”, conecta a internet y reintenta.',
+          true
+        );
+        return;
+      }
+
+      // Si no aplica bootstrap, mostramos error tal cual
+      if (!this.shouldAutoBootstrap(e1)) {
+        const norm = this.normalizeHttpError(e1);
+        this.setState('error', 'No se pudo validar terminal', norm.message, true);
+        return;
+      }
+
+      // 2) Bootstrap (solo una vez)
+      if (!this.bootstrappedThisRun) {
+        this.setState('checking', 'Registrando dispositivo…', 'Bootstrap (llaves + registro)…', false);
+        await this.doBootstrap(info.version || '');
+      }
+
+      // 3) Intento #2: status ya con KID registrado
+      this.setState('checking', 'Verificando terminal…', null, false);
+
+      console.log('[FLOW] try#2 before meStatus');
+      const st2 = await this.boot.meStatus();
+      console.log('[FLOW] try#2 after meStatus', st2);
+
+      await this.routeByStatus(st2);
+      return;
     }
+  } catch (e: any) {
+    const norm = this.normalizeHttpError(e);
+    this.setState('error', 'Error inesperado', norm.message, true);
+    console.error('[LOADING] runFlow outer error:', e);
+
+    try {
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      const devInfo = await Device.getInfo();
+      console.log('[TIME DEBUG]', { nowEpoch, iso: new Date().toISOString(), devInfo });
+    } catch {}
   }
+}
+
 }
