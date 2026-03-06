@@ -1,0 +1,84 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-title>Ajustes</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="close()">Cerrar</ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding settings-content">
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Pantalla</div>
+      <div class="panel-sub">No depende del tema del teléfono</div>
+    </div>
+
+    <div class="panel-body">
+      <ion-item class="item">
+        <ion-label>
+          <div class="lbl">Modo exterior (claro)</div>
+          <div class="sub">Más visible bajo sol</div>
+        </ion-label>
+        <ion-toggle
+          [checked]="theme === 'light'"
+          (ionChange)="toggleExteriorMode($event)">
+        </ion-toggle>
+      </ion-item>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-title">Precios</div>
+      <div class="panel-sub">MXN por litro</div>
+    </div>
+
+    <div class="panel-body">
+      <ion-text color="danger" *ngIf="msg && msg.startsWith('Precio inválido')">
+        <p class="msg">{{ msg }}</p>
+      </ion-text>
+
+      <ion-text color="success" *ngIf="msg && !msg.startsWith('Precio inválido')">
+        <p class="msg">{{ msg }}</p>
+      </ion-text>
+
+      <ion-list class="fuel-list">
+        <ion-item *ngFor="let f of fuels" class="item" lines="none">
+          <ion-label>
+            <div class="fuel-name">{{ f.label }}</div>
+            <div class="fuel-code">Código {{ f.code }}</div>
+          </ion-label>
+
+          <ion-input
+            class="price"
+            type="number"
+            inputmode="decimal"
+            placeholder="0.000"
+            [(ngModel)]="f.price">
+          </ion-input>
+
+          <div class="unit">MXN</div>
+        </ion-item>
+      </ion-list>
+
+      <div class="actions">
+        <ion-button expand="block" [disabled]="saving" class="btn-primary" (click)="save()">
+          {{ saving ? 'Guardando…' : 'Guardar cambios' }}
+        </ion-button>
+
+        <ion-button expand="block" fill="outline" [disabled]="saving" class="btn-secondary" (click)="resetDefaults()">
+          Restaurar defaults
+        </ion-button>
+      </div>
+
+      <div class="hint">
+        <span class="dot"></span>
+        Se guardan en esta terminal al presionar “Guardar”. No requiere transacción.
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 18px;"></div>
+</ion-content>

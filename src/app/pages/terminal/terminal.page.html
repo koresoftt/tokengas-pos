@@ -1,74 +1,340 @@
+<!-- =========================
+HEADER (logo + engrane)
+========================= -->
 <ion-header>
-  <ion-toolbar>
-    <ion-title>NFC / QR</ion-title>
+  <ion-toolbar class="tg-toolbar">
+    <div class="tg-header-center">
+      <img class="tg-header-logo" [src]="logoArt" alt="TokenGas" />
+    </div>
+
+    <button class="tg-gear" type="button" (click)="openMainMenu()" aria-label="Menú">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M19.14,12.94a7.43,7.43,0,0,0,.05-.94,7.43,7.43,0,0,0-.05-.94l2.11-1.65a.5.5,0,0,0,.12-.63l-2-3.46a.5.5,0,0,0-.6-.22l-2.49,1a7.28,7.28,0,0,0-1.63-.94l-.38-2.65A.5.5,0,0,0,11.8,1H8.2a.5.5,0,0,0-.49.42L7.33,4.07a7.28,7.28,0,0,0-1.63.94l-2.49-1a.5.5,0,0,0-.6.22l-2,3.46a.5.5,0,0,0,.12.63L2.86,11.06a7.43,7.43,0,0,0-.05.94,7.43,7.43,0,0,0,.05.94L.75,14.59a.5.5,0,0,0-.12.63l2,3.46a.5.5,0,0,0,.6.22l2.49-1a7.28,7.28,0,0,0,1.63.94l.38,2.65A.5.5,0,0,0,8.2,23h3.6a.5.5,0,0,0,.49-.42l.38-2.65a7.28,7.28,0,0,0,1.63-.94l2.49,1a.5.5,0,0,0,.6-.22l2-3.46a.5.5,0,0,0-.12-.63ZM10,15.5A3.5,3.5,0,1,1,13.5,12,3.5,3.5,0,0,1,10,15.5Z"
+        />
+      </svg>
+    </button>
   </ion-toolbar>
 </ion-header>
 
-<ion-content class="ion-padding terminal-content">
-  <p class="muted">
-    Estado: <b>{{ scanning ? 'escaneando' : 'tag/código leído' }}</b>
-  </p>
+<ion-content class="tg-content" [scrollY]="false">
 
-  <!-- Vista de escaneo -->
-  <div class="center" *ngIf="scanning; else result">
-    <!-- Escena -->
+  <!-- =========================
+  OVERLAY BUSY
+  ========================= -->
+  <div class="busy-overlay" *ngIf="busy">
+    <div class="busy-card">
+      <ion-spinner name="crescent"></ion-spinner>
+      <div class="busy-text">{{ busyText }}</div>
+    </div>
+  </div>
+
+  <!-- =========================
+  TOAST SIMPLE
+  ========================= -->
+  <div class="tg-toast" *ngIf="toast">
+    {{ toast }}
+  </div>
+
+  <!-- ==========================================================
+  1) SCAN (FIJA)
+  =========================================================== -->
+  <div class="scan-wrap" *ngIf="view === 'SCAN'">
+    <!-- escena -->
     <div class="nfc-scene" aria-hidden="true">
-      <img class="card-behind" [src]="cardArt" alt="Tarjeta" />
+      <img class="card-behind" [src]="cardArt" alt="" />
       <div class="phone-wrap">
-        <img class="phone" [src]="phoneArt" alt="Teléfono NFC" />
+        <img class="phone" [src]="phoneArt" alt="" />
         <div class="waves"><span></span><span></span><span></span></div>
       </div>
     </div>
 
+    <!-- UI -->
     <div class="scan-ui">
-      <!-- Spinner SOLO cuando hay QR en progreso -->
-      <ion-spinner *ngIf="qrBusy" name="crescent" aria-label="Leyendo QR…"></ion-spinner>
-
-      <div class="hints">
-        <h2>Acerca una etiqueta… o lee un QR</h2>
+      <div class="scan-title">
+        <h2>Escanea Dispositivo TokenGas</h2>
       </div>
 
-      <div class="actions">
-        <ion-button
-          class="btn-primary big"
+      <div class="scan-status" *ngIf="qrBusy">
+        <ion-spinner name="crescent" aria-label="Leyendo QR…"></ion-spinner>
+        <div class="scan-msg">Leyendo QR…</div>
+      </div>
+
+      <div class="scan-hint" *ngIf="qrMsg">
+        {{ qrMsg }}
+      </div>
+
+      <!-- botones abajo -->
+      <div class="scan-actions tiles">
+        <button
+          type="button"
+          class="tile tile-primary"
           [disabled]="qrBusy"
-          (click)="leerQr()">
-          {{ qrBusy ? 'Leyendo…' : 'Leer QR' }}
-        </ion-button>
+          (click)="leerQr()"
+          aria-label="Lector QR"
+        >
+          <div class="tile-icon" aria-hidden="true">
+            <!-- icono QR -->
+            <svg viewBox="0 0 24 24">
+              <path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm10 0h2v2h-2v-2zm0 4h2v2h-2v-2zm2-4h4v6h-2v-4h-2v-2zm-2 0v-2h4v2h-4zm6 2h-2v-2h2v2zm-4 4h2v2h-2v-2zm2 0h2v2h-2v-2z"/>
+            </svg>
+          </div>
+          <div class="tile-text">LECTOR QR</div>
+        </button>
 
-        <ion-button
-          class="btn-secondary big"
-          fill="outline"
-          (click)="abrirEntradaManual()">
-          Entrada Manual
-        </ion-button>
+        <button
+          type="button"
+          class="tile tile-outline"
+          (click)="abrirEntradaManual()"
+          aria-label="Entrada Manual"
+        >
+          <div class="tile-icon" aria-hidden="true">
+            <!-- icono teclado -->
+            <svg viewBox="0 0 24 24">
+              <path d="M20 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zM4 7h16v10H4V7zm2 2h2v2H6V9zm0 4h2v2H6v-2zm4-4h2v2h-2V9zm0 4h2v2h-2v-2zm4-4h2v2h-2V9zm0 4h2v2h-2v-2zm4-4h2v2h-2V9zm0 4h2v2h-2v-2z"/>
+            </svg>
+          </div>
+          <div class="tile-text">ENTRADA MANUAL</div>
+        </button>
       </div>
 
-      <ion-text color="medium" *ngIf="qrMsg">
-        <small>{{ qrMsg }}</small>
-      </ion-text>
-
-      <!-- Fallback web (PWA/navegador) -->
+      <!-- Fallback web -->
       <div *ngIf="qrWeb" class="qr-fallback">
         <video id="qr-video" playsinline muted></video>
-        <p class="muted">Modo fallback (web) activo: apunta el código QR…</p>
+        <p>Apunta el QR dentro del recuadro</p>
       </div>
     </div>
   </div>
 
-  <!-- Resultado -->
-  <ng-template #result>
-    <ion-card>
-      <ion-card-header>
-        <ion-card-title>Track leído</ion-card-title>
-      </ion-card-header>
-      <ion-card-content>
-        <div class="uid mono">{{ uid || '—' }}</div>
-      </ion-card-content>
-    </ion-card>
+  <!-- ==========================================================
+  2) FUELS
+  =========================================================== -->
+  <div class="flow-wrap" *ngIf="view === 'FUELS'">
+    <h2 class="section-title">Selecciona combustible</h2>
 
-    <ion-button expand="block" (click)="reset()">
-      Seguir escaneando
-    </ion-button>
-  </ng-template>
+    <div class="fuels-grid">
+      <div
+        class="fuel-card"
+        *ngFor="let f of fuels"
+        role="button"
+        tabindex="0"
+        [class.active]="selectedFuel?.code === f.code"
+        (click)="selectFuel(f)"
+      >
+        <div class="fuel-left">
+          <div class="fuel-name">{{ f.label }}</div>
+          <div class="fuel-price">${{ f.price | number:'1.2-2' }}</div>
+        </div>
+
+        <button
+          type="button"
+          class="fuel-edit"
+          (click)="openSettings(); $event.stopPropagation()"
+          aria-label="Editar precios"
+        >
+          ✎
+        </button>
+      </div>
+    </div>
+
+    <button class="btn-secondary" type="button" (click)="confirmExitToScan()">
+      VOLVER A ESCANEAR
+    </button>
+  </div>
+
+  <!-- ==========================================================
+  3) AUTHORIZED
+  =========================================================== -->
+  <div class="flow-wrap" *ngIf="view === 'AUTHORIZED'">
+    <div class="auth-card">
+      <div class="auth-fuel">
+        {{ selectedFuel?.label }}
+        <span class="auth-price">· ${{ selectedFuel?.price || 0 | number:'1.2-2' }}</span>
+      </div>
+
+      <div class="auth-amount">
+        <div class="auth-label">Saldo autorizado</div>
+        <div class="auth-value">${{ authorized_amount || 0 | number:'1.2-2' }}</div>
+      </div>
+
+      <div class="charge-input">
+        <div class="charge-label">Cantidad a cargar (MXN)</div>
+        <input
+          class="charge-field"
+          type="text"
+          inputmode="decimal"
+          autocomplete="off"
+          spellcheck="false"
+          [value]="amountToCharge ? amountToCharge : ''"
+          (input)="onAmountToChargeInput($any($event.target).value)"
+        />
+      </div>
+
+      <button class="btn-primary" type="button" (click)="complete()">
+        COMPLETAR
+      </button>
+
+      <button class="btn-secondary" type="button" (click)="confirmExitToScan()">
+        VOLVER A ESCANEAR
+      </button>
+    </div>
+  </div>
+
+  <!-- ==========================================================
+  4) DONE
+  =========================================================== -->
+  <div class="flow-wrap" *ngIf="view === 'DONE'">
+    <div class="done-card">
+      <div class="done-title">Transacción completada</div>
+      <div class="done-sub">
+        {{ selectedFuel?.label }} · ${{ doneAmount || 0 | number:'1.2-2' }}
+      </div>
+
+      <button class="btn-primary" type="button" (click)="resetToScan(false)">
+        NUEVA TRANSACCIÓN
+      </button>
+    </div>
+  </div>
+
+  <!-- ==========================================================
+  5) ERROR
+  =========================================================== -->
+  <div class="flow-wrap" *ngIf="view === 'ERROR'">
+    <div class="error-box">
+      <div class="error-title">No se pudo autorizar</div>
+      <div class="error-msg">{{ toast }}</div>
+    </div>
+
+    <button class="btn-secondary" type="button" (click)="confirmExitToScan()">
+      VOLVER A ESCANEAR
+    </button>
+  </div>
+
+  <!-- ==========================================================
+  PROMPT SHEET (NIP / PLACA / KILOMETRAJE)
+  =========================================================== -->
+  <div class="sheet-backdrop" *ngIf="promptOpen"></div>
+
+  <div class="sheet" *ngIf="promptOpen" role="dialog" aria-modal="true">
+    <div class="sheet-header">
+<div class="sheet-icon" aria-hidden="true">
+  <img [src]="promptIconSrc" alt="" />
+</div>
+      <div class="sheet-title">{{ promptTitle }}</div>
+
+      <!-- IMPORTANTE: NO mostrar saldo aquí para no confundir -->
+      <div class="sheet-sub">
+        {{ selectedFuel?.label }} · ${{ selectedFuel?.price || 0 | number:'1.2-2' }}
+      </div>
+    </div>
+
+    <div class="sheet-body">
+      <div class="tap-to-type" *ngIf="!isPinPrompt && !inputArmed" (click)="armInput()">
+  <div class="tap-title">Listo para escribir</div>
+  <div class="tap-sub">{{ promptHint }}</div>
+</div>
+
+<input
+  class="sheet-input"
+  [type]="isPinPrompt ? 'password' : 'text'"
+  [attr.inputmode]="promptInputMode"
+  [attr.maxlength]="promptMaxLen"
+  [value]="promptValue"
+  (input)="onPromptInput($event)"
+  autocomplete="off"
+/>
+      <div class="sheet-error" *ngIf="promptError">
+        {{ promptError }}
+      </div>
+
+      <div class="sheet-actions">
+        <button
+          *ngIf="!isPinPrompt"
+          class="btn-primary"
+          type="button"
+          (click)="onPromptOk()"
+        >
+          OK
+        </button>
+
+        <button class="btn-outline" type="button" (click)="promptChangeFuel()">
+          CAMBIAR COMBUSTIBLE
+        </button>
+
+        <button class="btn-outline" type="button" (click)="promptScanAgain()">
+          ESCANEAR DE NUEVO
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================
+  MENU PROVISIONAL (ENGRANE)
+  =========================================================== -->
+  <div class="sheet-backdrop" *ngIf="menuOpen" (click)="closeMainMenu()"></div>
+
+  <div class="menu-sheet" *ngIf="menuOpen" role="dialog" aria-modal="true">
+    <div class="menu-head">
+      <div class="menu-title">Menú</div>
+      <button class="menu-close" type="button" (click)="closeMainMenu()">✕</button>
+    </div>
+
+    <div class="menu-body">
+      <button class="menu-item" type="button" (click)="menuAction('Configuración')">
+        Configuración (pendiente)
+      </button>
+
+      <button class="menu-item" type="button" (click)="openSettings(); closeMainMenu()">
+        Editar precios
+      </button>
+
+      <button class="menu-item" type="button" (click)="menuAction('Ayuda')">
+        Ayuda (pendiente)
+      </button>
+    </div>
+  </div>
+
+  <!-- ==========================================================
+  SETTINGS MODAL (precios) - centrado
+  =========================================================== -->
+  <ion-modal [isOpen]="settingsOpen" (didDismiss)="closeSettings()" class="tg-modal">
+    <div class="settings-wrap">
+      <div class="settings-head">
+        <div class="settings-title">Precios</div>
+        <button class="settings-close" type="button" (click)="closeSettings()">✕</button>
+      </div>
+
+      <div class="settings-body">
+        <div class="settings-row" *ngFor="let f of fuels">
+          <div class="settings-name">{{ f.label }}</div>
+          <div class="settings-input">
+            <input
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              spellcheck="false"
+              [value]="f.price"
+              (input)="updateFuelPrice(f.code, $any($event.target).value)"
+            />
+          </div>
+        </div>
+
+        <button class="btn-primary w100" type="button" (click)="saveSettings()">
+          GUARDAR
+        </button>
+      </div>
+    </div>
+  </ion-modal>
+
+  <!-- ==========================================================
+  ALERT: salir/cancelar
+  =========================================================== -->
+  <ion-alert
+    [isOpen]="exitAlertOpen"
+    header="Cancelar transacción"
+    message="Si sales, se cancelará la autorización actual."
+    [buttons]="exitAlertButtons"
+    (didDismiss)="exitAlertOpen=false"
+  ></ion-alert>
+
 </ion-content>
