@@ -17,8 +17,7 @@ HEADER (logo + engrane)
   </ion-toolbar>
 </ion-header>
 
-<ion-content class="tg-content" [scrollY]="false">
-
+<ion-content class="tg-content" [scrollY]="view !== 'SCAN'">
   <!-- =========================
   OVERLAY BUSY
   ========================= -->
@@ -211,88 +210,140 @@ HEADER (logo + engrane)
   </div>
 
   <!-- ==========================================================
-  PROMPT SHEET (NIP / PLACA / KILOMETRAJE)
-  =========================================================== -->
-  <div class="sheet-backdrop" *ngIf="promptOpen"></div>
+PROMPT SHEET (NIP / PLACA / KILOMETRAJE)
+=========================================================== -->
+<div class="sheet-backdrop" *ngIf="promptOpen"></div>
 
-  <div class="sheet" *ngIf="promptOpen" role="dialog" aria-modal="true">
-    <div class="sheet-header">
-<div class="sheet-icon" aria-hidden="true">
-  <img [src]="promptIconSrc" alt="" />
-</div>
-      <div class="sheet-title">{{ promptTitle }}</div>
-
-      <!-- IMPORTANTE: NO mostrar saldo aquí para no confundir -->
-      <div class="sheet-sub">
-        {{ selectedFuel?.label }} · ${{ selectedFuel?.price || 0 | number:'1.2-2' }}
-      </div>
+<div class="sheet" *ngIf="promptOpen" role="dialog" aria-modal="true">
+  <div class="sheet-header">
+    <div class="sheet-icon" aria-hidden="true">
+      <img [src]="promptIconSrc" alt="" />
     </div>
 
-    <div class="sheet-body">
-      <div class="tap-to-type" *ngIf="!isPinPrompt && !inputArmed" (click)="armInput()">
-  <div class="tap-title">Listo para escribir</div>
-  <div class="tap-sub">{{ promptHint }}</div>
-</div>
+    <div class="sheet-title">
+      {{ promptTitle }}
+    </div>
 
-<input
-  class="sheet-input"
-  [type]="isPinPrompt ? 'password' : 'text'"
-  [attr.inputmode]="promptInputMode"
-  [attr.maxlength]="promptMaxLen"
-  [value]="promptValue"
-  (input)="onPromptInput($event)"
-  autocomplete="off"
-/>
-      <div class="sheet-error" *ngIf="promptError">
-        {{ promptError }}
-      </div>
-
-      <div class="sheet-actions">
-        <button
-          *ngIf="!isPinPrompt"
-          class="btn-primary"
-          type="button"
-          (click)="onPromptOk()"
-        >
-          OK
-        </button>
-
-        <button class="btn-outline" type="button" (click)="promptChangeFuel()">
-          CAMBIAR COMBUSTIBLE
-        </button>
-
-        <button class="btn-outline" type="button" (click)="promptScanAgain()">
-          ESCANEAR DE NUEVO
-        </button>
-      </div>
+    <div class="sheet-sub">
+      {{ selectedFuel?.label }} · ${{ selectedFuel?.price || 0 | number:'1.2-2' }}
     </div>
   </div>
 
+  <div class="sheet-body">
+    <input
+      #promptBox
+      class="sheet-input"
+      [class.error]="!!promptError"
+      [type]="isPinPrompt ? 'password' : 'text'"
+      [attr.inputmode]="promptInputMode"
+      [attr.maxlength]="promptMaxLen"
+      [value]="promptValue"
+      [readonly]="!inputArmed"
+      (click)="armInput(promptBox)"
+      (focus)="onPromptFocus(promptBox)"
+      (input)="onPromptInput($event)"
+      autocomplete="off"
+    />
+
+    <div class="sheet-error" *ngIf="promptError">
+      {{ promptError }}
+    </div>
+
+    <div class="sheet-actions">
+      <button
+        *ngIf="!isPinPrompt"
+        class="btn-primary"
+        type="button"
+        (click)="onPromptOk()"
+      >
+        OK
+      </button>
+
+      <button
+        class="btn-outline"
+        type="button"
+        (click)="promptChangeFuel()"
+      >
+        CAMBIAR COMBUSTIBLE
+      </button>
+
+      <button
+        class="btn-outline"
+        type="button"
+        (click)="promptScanAgain()"
+      >
+        ESCANEAR DE NUEVO
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ==========================================================
+DIALOGO REINTENTO
+=========================================================== -->
+<div class="sheet-backdrop" *ngIf="retryDialogOpen"></div>
+
+<div class="menu-sheet" *ngIf="retryDialogOpen" role="dialog" aria-modal="true">
+  <div class="menu-head">
+    <div class="menu-title">Aviso</div>
+  </div>
+
+  <div class="menu-body">
+    <div class="retry-message">{{ retryDialogMessage }}</div>
+
+    <button
+      *ngIf="retryDialogCanRetry"
+      class="menu-item"
+      type="button"
+      (click)="retryDialogConfirm()"
+    >
+      SI, VOLVER A INTENTAR
+    </button>
+
+    <button
+      *ngIf="retryDialogCanRetry"
+      class="menu-item"
+      type="button"
+      (click)="retryDialogCancel()"
+    >
+      NO, CANCELAR
+    </button>
+
+    <button
+      *ngIf="!retryDialogCanRetry"
+      class="menu-item"
+      type="button"
+      (click)="retryDialogConfirm()"
+    >
+      ENTENDIDO
+    </button>
+  </div>
+</div>
   <!-- ==========================================================
   MENU PROVISIONAL (ENGRANE)
   =========================================================== -->
   <div class="sheet-backdrop" *ngIf="menuOpen" (click)="closeMainMenu()"></div>
 
-  <div class="menu-sheet" *ngIf="menuOpen" role="dialog" aria-modal="true">
-    <div class="menu-head">
-      <div class="menu-title">Menú</div>
-      <button class="menu-close" type="button" (click)="closeMainMenu()">✕</button>
-    </div>
-
-    <div class="menu-body">
-      <button class="menu-item" type="button" (click)="menuAction('Configuración')">
-        Configuración (pendiente)
-      </button>
-
-      <button class="menu-item" type="button" (click)="openSettings(); closeMainMenu()">
-        Editar precios
-      </button>
-
-      <button class="menu-item" type="button" (click)="menuAction('Ayuda')">
-        Ayuda (pendiente)
-      </button>
-    </div>
+<div class="menu-sheet" *ngIf="menuOpen" role="dialog" aria-modal="true">
+  <div class="menu-head">
+    <div class="menu-title">Menú</div>
+    <button class="menu-close" type="button" (click)="closeMainMenu()">✕</button>
   </div>
+
+  <div class="menu-body">
+    <button class="menu-item" type="button" (click)="openSettings(); closeMainMenu()">
+      Editar precios
+    </button>
+
+    <button class="menu-item" type="button" (click)="menuAction('Configuración')">
+      Configuración
+    </button>
+
+    <button class="menu-item" type="button" (click)="menuAction('Ayuda')">
+      Ayuda
+    </button>
+  </div>
+</div>
 
   <!-- ==========================================================
   SETTINGS MODAL (precios) - centrado

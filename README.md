@@ -1,7 +1,8 @@
 # tokengas-pos
 App terminal Tokengas
-Version 1.1.02
-Mejora en diseño, ya se funciona correctamente, preautorizacion, se borra al retoceder, cambiar de combustible, cancelar, tambien funciona la confirmacion
+Version 1.1.03
+Proceso completo con mensajes correctos
+
 
 Pendientes
 cambio de nip

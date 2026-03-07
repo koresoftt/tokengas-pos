@@ -59,34 +59,27 @@ function opId(): string {
   styleUrls: ['./terminal.page.scss']
 })
 export class TerminalPage implements OnInit, OnDestroy {
-  // ===== Assets =====
   phoneArt = 'assets/brand/phone.png';
   cardArt = 'assets/brand/card.png';
   logoArt = 'assets/brand/tokengas-logo.png';
 
-  // ===== View =====
   view: ViewState = 'SCAN';
 
-  // ===== Overlay/Toast =====
   busy = false;
   busyText = 'Procesando…';
   toast = '';
 
-  // ===== QR =====
   qrBusy = false;
   qrMsg = '';
   qrWeb = false;
   private zxing?: BrowserMultiFormatReader;
 
-  // ===== NFC lock =====
   private nfcLocked = false;
   private offNfc?: () => void;
 
-  // ===== Back/appstate listeners =====
   private offBack?: () => void;
   private offState?: () => void;
 
-  // ===== Exit alert =====
   exitAlertOpen = false;
   exitAlertButtons = [
     {
@@ -104,7 +97,6 @@ export class TerminalPage implements OnInit, OnDestroy {
     }
   ];
 
-  // ===== Menu provisional (engrane) =====
   menuOpen = false;
   openMainMenu() { this.menuOpen = true; }
   closeMainMenu() { this.menuOpen = false; }
@@ -113,14 +105,12 @@ export class TerminalPage implements OnInit, OnDestroy {
     this.toast = `Pendiente: ${action}`;
   }
 
-  // ===== TX =====
   terminal_id = '';
   operation_id = '';
   tx_token = '';
   authorization_code = '';
   uid_track = '';
 
-  // ===== Fuels =====
   fuels: FuelItem[] = [
     { code: 10100, label: 'Magna', price: 24.99 },
     { code: 10300, label: 'Premium', price: 25.99 },
@@ -128,22 +118,25 @@ export class TerminalPage implements OnInit, OnDestroy {
   ];
   selectedFuel?: FuelItem;
 
-  // ===== Authorized =====
-  authorized_amount = 0; // preauth_max_amount
+  authorized_amount = 0;
   amountToCharge = 0;
   doneAmount = 0;
 
-  // ===== Prompt chain =====
   promptOpen = false;
   requiredFields: PromptKey[] = [];
   promptIndex = 0;
   promptValue = '';
   promptError = '';
   inputs: Record<string, any> = {};
-  inputArmed = false; // evita teclado automático en no-pin
+  inputArmed = false;
 
-  // ===== Settings modal =====
   settingsOpen = false;
+
+  // ===== Retry dialog =====
+  retryDialogOpen = false;
+  retryDialogMessage = '';
+  retryDialogField: string = '';
+  retryDialogCanRetry = false;
 
   constructor(
     private zone: NgZone,
@@ -152,9 +145,6 @@ export class TerminalPage implements OnInit, OnDestroy {
     private bootstrap: AppBootstrapService,
   ) {}
 
-  // ======================
-  // Lifecycle
-  // ======================
   async ngOnInit() {
     try {
       await StatusBar.setOverlaysWebView({ overlay: false });
@@ -180,9 +170,6 @@ export class TerminalPage implements OnInit, OnDestroy {
     this.stopQrWeb();
   }
 
-  // ======================
-  // NFC
-  // ======================
   private setupNfcListener() {
     const handler = (e: Event) => {
       if (this.nfcLocked) return;
@@ -208,19 +195,23 @@ export class TerminalPage implements OnInit, OnDestroy {
     this.offNfc = () => window.removeEventListener('nfc:tag', handler as EventListener);
   }
 
-  // ======================
-  // Back + background
-  // ======================
   private async setupBackAndAppState() {
     const backSub = await App.addListener('backButton', async () => {
+      if (this.retryDialogOpen) {
+        this.retryDialogOpen = false;
+        return;
+      }
+
       if (this.hasCancelableTx()) {
         this.exitAlertOpen = true;
         return;
       }
+
       if (this.view !== 'SCAN') {
         await this.resetToScan(false);
         return;
       }
+
       App.exitApp();
     });
     this.offBack = () => backSub.remove();
@@ -233,9 +224,6 @@ export class TerminalPage implements OnInit, OnDestroy {
     this.offState = () => stateSub.remove();
   }
 
-  // ======================
-  // Helpers
-  // ======================
   private resetSoft() {
     this.view = 'SCAN';
     this.busy = false;
@@ -270,6 +258,11 @@ export class TerminalPage implements OnInit, OnDestroy {
 
     this.menuOpen = false;
 
+    this.retryDialogOpen = false;
+    this.retryDialogMessage = '';
+    this.retryDialogField = '';
+    this.retryDialogCanRetry = false;
+
     try { (window as any).NativeNfc?.restart?.(); } catch {}
   }
 
@@ -284,9 +277,6 @@ export class TerminalPage implements OnInit, OnDestroy {
       (this.view === 'FUELS' || this.view === 'AUTHORIZED' || this.promptOpen);
   }
 
-  // ======================
-  // QR
-  // ======================
   async leerQr() {
     if (this.qrBusy) return;
     this.qrBusy = true;
@@ -359,9 +349,6 @@ export class TerminalPage implements OnInit, OnDestroy {
     this.toast = 'Entrada manual: pendiente';
   }
 
-  // ======================
-  // Track read => FUELS
-  // ======================
   private async onTrackRead(track: string, _via: string) {
     this.uid_track = track;
     this.toast = '';
@@ -377,14 +364,16 @@ export class TerminalPage implements OnInit, OnDestroy {
     this.promptOpen = false;
     this.inputArmed = false;
 
+    this.retryDialogOpen = false;
+    this.retryDialogMessage = '';
+    this.retryDialogField = '';
+    this.retryDialogCanRetry = false;
+
     try { await Haptics.impact({ style: ImpactStyle.Medium }); } catch {}
 
     this.view = 'FUELS';
   }
 
-  // ======================
-  // Fuels storage (por terminal)
-  // ======================
   private fuelsKey(): string {
     return `tg_fuels_v1_${this.terminal_id}`;
   }
@@ -419,12 +408,10 @@ export class TerminalPage implements OnInit, OnDestroy {
     } catch {}
   }
 
-  // ======================
-  // Settings modal
-  // ======================
   openSettings() {
     this.settingsOpen = true;
   }
+
   closeSettings() {
     this.settingsOpen = false;
   }
@@ -452,9 +439,6 @@ export class TerminalPage implements OnInit, OnDestroy {
     this.toast = 'Precios guardados';
   }
 
-  // ======================
-  // Fuel selection => PREAUTH
-  // ======================
   async selectFuel(f: FuelItem) {
     this.selectedFuel = f;
     this.toast = '';
@@ -481,50 +465,90 @@ export class TerminalPage implements OnInit, OnDestroy {
       };
 
       const r = await this.appPos.preauth(body);
-      const resp = r?.resp || {};
+      const resp = r?.resp || r || {};
 
       this.tx_token = resp?.tx_token || this.tx_token || '';
       this.authorization_code =
         resp?.authorization_code ||
         resp?.atio?.AuthorizationCode ||
+        resp?.ui?.authorization_code ||
         this.authorization_code ||
         '';
 
       const required: string[] = Array.isArray(resp?.required_fields) ? resp.required_fields : [];
-      const rc = String(resp?.atio?.ResponseCode || '');
-      const rt = String(resp?.atio?.ResponseText || resp?.atio?.ResponseMessage || resp?.message || '');
+      const rc = String(resp?.atio?.ResponseCode || resp?.ui?.response_code || '');
+      const rt = String(
+        resp?.atio?.ResponseText ||
+        resp?.atio?.ResponseMessage ||
+        resp?.ui?.response_text ||
+        resp?.message ||
+        ''
+      );
+      const status = String(resp?.status || '');
 
-      this.authorized_amount = Number(resp?.preauth_max_amount ?? 0) || 0;
+      this.authorized_amount = Number(resp?.preauth_max_amount ?? resp?.ui?.authorized_amount ?? 0) || 0;
 
-      if (required.length || rc.startsWith('405')) {
-        this.openPrompt(required);
-        this.view = 'FUELS';
-        return;
-      }
+if (status === 'PREAUTH_NEED_INPUTS' || required.length || rc.startsWith('405')) {
+  const hadPreviousInputs = Object.keys(this.inputs || {}).length > 0;
+  const normalized = this.normalizeBackendPromptError(rt, this.currentPromptFieldForError());
 
-      if (rc === '00000' || String(resp?.status || '') === 'PREAUTH_OK') {
+  if (!this.promptOpen) {
+    this.openPrompt(required);
+
+    // si ya veníamos de capturar algo, entonces esto no es primer intento:
+    // mostrar el error real en el nuevo prompt
+    if (hadPreviousInputs && rt) {
+      this.promptError = normalized;
+      this.inputArmed = false;
+    }
+  } else {
+    this.promptError = normalized;
+    this.inputArmed = false;
+  }
+
+  this.view = 'FUELS';
+  return;
+}
+
+      if (status === 'PREAUTH_OK' || rc === '00000') {
         try { await Haptics.impact({ style: ImpactStyle.Heavy }); } catch {}
+        this.promptOpen = false;
+        this.promptError = '';
         this.amountToCharge = 0;
         this.view = 'AUTHORIZED';
         return;
       }
 
+      const normalized = this.normalizeBackendPromptError(rt, this.currentPromptFieldForError());
+
+      if (this.promptOpen || this.requiredFields.length > 0) {
+        this.promptOpen = true;
+        this.view = 'FUELS';
+        this.promptError = normalized;
+        this.inputArmed = false;
+        try { await Haptics.impact({ style: ImpactStyle.Medium }); } catch {}
+
+        if (this.canRetryPromptError(normalized, this.currentPromptFieldForError())) {
+  this.openRetryDialog(normalized, this.currentPromptFieldForError(), true);
+} else {
+  this.openRetryDialog(normalized, this.currentPromptFieldForError(), false);
+}
+        return;
+      }
+
       this.view = 'ERROR';
-      this.toast = rt || rc || 'No se pudo autorizar';
+      this.toast = normalized;
       try { await Haptics.impact({ style: ImpactStyle.Medium }); } catch {}
     } catch (e: any) {
       const err = this.appPos.error$.value;
       this.view = 'ERROR';
-      this.toast = err?.message || err?.code || e?.message || 'Error';
+      this.toast = this.normalizeBackendPromptError(err?.message || err?.code || e?.message || 'Error');
       try { await Haptics.impact({ style: ImpactStyle.Medium }); } catch {}
     } finally {
       this.busy = false;
     }
   }
 
-  // ======================
-  // Amount input
-  // ======================
   onAmountToChargeInput(raw: any) {
     let s = String(raw ?? '').trim();
     s = s.replace(/[^\d.,]/g, '');
@@ -534,16 +558,13 @@ export class TerminalPage implements OnInit, OnDestroy {
     if (parts.length > 2) s = parts[0] + '.' + parts.slice(1).join('');
 
     const [i, d] = s.split('.');
-    if (d != null) s = `${i}.${d.slice(0, 2)}`; // monto a 2 decimales
+    if (d != null) s = `${i}.${d.slice(0, 2)}`;
 
     const n = Number(s);
     if (!Number.isFinite(n) || n < 0) return;
     this.amountToCharge = n;
   }
 
-  // ======================
-  // Prompt chain
-  // ======================
   private openPrompt(required: string[]) {
     const list = (Array.isArray(required) && required.length) ? required : ['primary_pin'];
     this.requiredFields = list as PromptKey[];
@@ -568,7 +589,12 @@ export class TerminalPage implements OnInit, OnDestroy {
 
   isOdometerField(field: string): boolean {
     const f = String(field || '').toLowerCase();
-    return f === 'odometer' || f.includes('odometer') || f.includes('kilomet');
+    return (
+      f === 'odometer' ||
+      f.includes('odometer') ||
+      f.includes('kilomet') ||
+      f.includes('odo')
+    );
   }
 
   get isPinPrompt(): boolean {
@@ -578,7 +604,7 @@ export class TerminalPage implements OnInit, OnDestroy {
   get promptInputMode(): string {
     const k = String(this.currentField || '').toLowerCase();
     if (this.isPinField(k)) return 'numeric';
-    if (this.isOdometerField(k)) return 'numeric'; // KILOMETRAJE SIEMPRE NUMÉRICO
+    if (this.isOdometerField(k)) return 'numeric';
     if (k === 'engine_hours') return 'numeric';
     return 'text';
   }
@@ -588,7 +614,7 @@ export class TerminalPage implements OnInit, OnDestroy {
     if (this.isPinField(k)) return 4;
     if (this.isOdometerField(k)) return 9;
     if (k === 'engine_hours') return 7;
-    if (k === 'vehicle_id') return 10;
+    if (k === 'vehicle_id') return 40;
     return 32;
   }
 
@@ -606,21 +632,6 @@ export class TerminalPage implements OnInit, OnDestroy {
     return map[k] || `CAPTURA ${k.replace(/_/g, ' ').toUpperCase()}`;
   }
 
-  get promptHint(): string {
-    const k = String(this.currentField || '');
-    const map: Record<string, string> = {
-      primary_pin: 'Ingresa 4 dígitos',
-      secondary_pin: 'Ingresa 4 dígitos',
-      odometer: 'Solo números (ej: 123456)',
-      vehicle_id: 'Sin guiones (ej: ABC123)',
-      driver_id: 'Ejemplo: 000123',
-      engine_hours: 'Solo números (ej: 1540)',
-      truck_unit_number: 'Ejemplo: 12',
-    };
-    return map[k] || 'Toca para escribir';
-  }
-
-  // Iconos por campo
   get promptIcon(): 'pin' | 'keypad' | 'speed' | 'plate' | 'user' | 'clock' | 'truck' | 'edit' {
     const k = String(this.currentField || '').toLowerCase();
     if (k.includes('pin')) return 'pin';
@@ -633,27 +644,39 @@ export class TerminalPage implements OnInit, OnDestroy {
   }
 
   get promptIconSrc(): string {
-  const k = String(this.promptIcon || '');
-  const map: Record<string, string> = {
-    pin: 'assets/icons/pin.svg',
-    keypad: 'assets/icons/keypad.svg',
-    speed: 'assets/icons/speed.svg',
-    plate: 'assets/icons/plate.svg',
-    user: 'assets/icons/user.svg',
-    clock: 'assets/icons/clock.svg',
-    truck: 'assets/icons/truck.svg',
-    edit: 'assets/icons/keypad.svg',
-  };
-  return map[k] || 'assets/icons/keypad.svg';
-}
+    const k = String(this.promptIcon || '');
+    const map: Record<string, string> = {
+      pin: 'assets/icons/pin.svg',
+      keypad: 'assets/icons/keypad.svg',
+      speed: 'assets/icons/speed.svg',
+      plate: 'assets/icons/plate.svg',
+      user: 'assets/icons/user.svg',
+      clock: 'assets/icons/clock.svg',
+      truck: 'assets/icons/truck.svg',
+      edit: 'assets/icons/keypad.svg',
+    };
+    return map[k] || 'assets/icons/keypad.svg';
+  }
 
-  armInput() {
-    if (!this.isPinPrompt) this.inputArmed = true;
+  armInput(el?: HTMLInputElement) {
+    if (this.inputArmed) return;
+    this.inputArmed = true;
+
+    setTimeout(() => {
+      try { el?.focus(); } catch {}
+    }, 30);
+  }
+
+  onPromptFocus(el?: HTMLInputElement) {
+    if (!this.inputArmed) {
+      try { el?.blur(); } catch {}
+    }
   }
 
   onPromptInput(ev: any) {
-    let v = (ev?.detail?.value ?? ev?.target?.value ?? '').toString();
+    this.promptError = '';
 
+    let v = (ev?.detail?.value ?? ev?.target?.value ?? '').toString();
     const field = String(this.currentField || '').toLowerCase();
 
     if (this.isPinPrompt) {
@@ -667,14 +690,12 @@ export class TerminalPage implements OnInit, OnDestroy {
       return;
     }
 
-    // kilometraje SIEMPRE numérico
-    if (this.isOdometerField(field) || field === 'engine_hours') {
+    if (field === 'odometer' || field === 'engine_hours' || this.isOdometerField(field)) {
       v = v.replace(/\D+/g, '');
     }
 
-    // placa SIN guiones/espacios
     if (field === 'vehicle_id') {
-      v = v.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      v = v.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 40);
     }
 
     this.promptValue = v;
@@ -686,6 +707,7 @@ export class TerminalPage implements OnInit, OnDestroy {
     const v = (this.promptValue ?? '').toString().trim();
 
     this.promptError = '';
+    this.retryDialogOpen = false;
 
     if (!fieldRaw) {
       this.promptOpen = false;
@@ -707,14 +729,13 @@ export class TerminalPage implements OnInit, OnDestroy {
       }
       this.inputs[fieldRaw] = v;
     } else if (field === 'vehicle_id') {
-  // permitir 1..10 (porque el backend a veces pide solo “algo” y no queremos bloquear)
-  if (!/^[A-Z0-9]{1,10}$/.test(v.toUpperCase())) {
-    this.promptError = 'Placa inválida (sin guiones)';
-    try { await Haptics.impact({ style: ImpactStyle.Medium }); } catch {}
-    return;
-  }
-  this.inputs[fieldRaw] = v.toUpperCase();
-} else {
+      if (!/^[A-Z0-9]{1,40}$/.test(v.toUpperCase())) {
+        this.promptError = 'Placa inválida (sin guiones)';
+        try { await Haptics.impact({ style: ImpactStyle.Medium }); } catch {}
+        return;
+      }
+      this.inputs[fieldRaw] = v.toUpperCase();
+    } else {
       if (!v) {
         this.promptError = 'Campo requerido';
         try { await Haptics.impact({ style: ImpactStyle.Medium }); } catch {}
@@ -723,7 +744,6 @@ export class TerminalPage implements OnInit, OnDestroy {
       this.inputs[fieldRaw] = v;
     }
 
-    // siguiente
     this.promptValue = '';
     this.inputArmed = false;
     this.promptIndex++;
@@ -734,6 +754,13 @@ export class TerminalPage implements OnInit, OnDestroy {
     }
 
     this.promptOpen = false;
+
+    // ATIO no admite retry de la misma operación
+    this.operation_id = opId();
+    this.tx_token = '';
+    this.authorization_code = '';
+    this.authorized_amount = 0;
+
     await this.runPreauth();
   }
 
@@ -746,6 +773,7 @@ export class TerminalPage implements OnInit, OnDestroy {
     this.promptError = '';
     this.promptOpen = false;
     this.inputArmed = false;
+    this.retryDialogOpen = false;
     this.view = 'FUELS';
   }
 
@@ -753,9 +781,166 @@ export class TerminalPage implements OnInit, OnDestroy {
     await this.resetToScan(true);
   }
 
-  // ======================
-  // Completion
-  // ======================
+  private currentPromptFieldForError(): string {
+    return String(this.currentField || '').toLowerCase();
+  }
+
+ private normalizeBackendPromptError(message: string, field?: string): string {
+  const msg = String(message || '').trim();
+  const m = msg.toLowerCase();
+  const f = String(field || '').toLowerCase();
+
+  // ----- bloqueos / demasiados intentos -----
+  if (
+    m.includes('reintentos excedidos') ||
+    m.includes('retry exceeded') ||
+    m.includes('too many attempts') ||
+    m.includes('demasiados intentos') ||
+    m.includes('tps')
+  ) {
+    return 'Demasiados intentos. Operación bloqueada. Escanee de nuevo';
+  }
+
+  if (
+    m.includes('id pri bloq') ||
+    m.includes('id pri bloqueado') ||
+    m.includes('identificador bloqueado') ||
+    m.includes('primary id blocked')
+  ) {
+    return 'Identificador bloqueado';
+  }
+
+  // ----- NIP / PIN -----
+  if (f.includes('pin') || m.includes('pin') || m.includes('nip')) {
+    if (m.includes('incorrect')) return 'NIP incorrecto';
+    if (m.includes('inválido') || m.includes('invalido')) return 'NIP inválido';
+    if (m.includes('retry') || m.includes('reintento')) return 'NIP incorrecto';
+    return 'NIP incorrecto';
+  }
+
+  // ----- Kilometraje / odómetro -----
+  if (this.isOdometerField(f) || m.includes('odometer') || m.includes('kilomet')) {
+    if (m.includes('menor') || m.includes('lower') || m.includes('less than')) {
+      return 'Kilometraje menor al registrado';
+    }
+    if (m.includes('mayor') || m.includes('greater') || m.includes('higher') || m.includes('exceeds')) {
+      return 'Kilometraje mayor al permitido';
+    }
+    if (m.includes('variacion') || m.includes('variation') || m.includes('rango') || m.includes('range')) {
+      return 'Kilometraje fuera de rango permitido';
+    }
+    if (m.includes('inválido') || m.includes('invalido')) {
+      return 'Kilometraje inválido';
+    }
+    return 'Kilometraje no válido';
+  }
+
+  // ----- Horas motor -----
+  if (f === 'engine_hours' || m.includes('engine hours') || m.includes('hours')) {
+    if (m.includes('menor') || m.includes('lower') || m.includes('less than')) {
+      return 'Horas menores a las registradas';
+    }
+    if (m.includes('mayor') || m.includes('greater') || m.includes('higher') || m.includes('exceeds')) {
+      return 'Horas mayores a las permitidas';
+    }
+    if (m.includes('variacion') || m.includes('variation') || m.includes('rango') || m.includes('range')) {
+      return 'Horas fuera de rango permitido';
+    }
+    if (m.includes('inválido') || m.includes('invalido')) {
+      return 'Horas inválidas';
+    }
+    return 'Horas no válidas';
+  }
+
+  // ----- Placa -----
+  if (f === 'vehicle_id' || m.includes('placa') || m.includes('vehicle')) {
+    if (m.includes('inválido') || m.includes('invalido')) {
+      return 'Placa inválida';
+    }
+    if (m.includes('no autorizado') || m.includes('unauthorized')) {
+      return 'Placa no autorizada';
+    }
+    return 'Placa incorrecta';
+  }
+
+  // ----- Sitio / producto / saldo -----
+  if (m.includes('sitio no autorizado') || m.includes('site not authorized')) {
+    return 'Sitio no autorizado';
+  }
+  if (m.includes('producto no autorizado') || m.includes('product not authorized')) {
+    return 'Combustible no autorizado';
+  }
+  if (m.includes('sin saldo') || m.includes('insufficient') || m.includes('insufficient funds')) {
+    return 'Saldo insuficiente';
+  }
+  if (m.includes('empresa sin saldo') || m.includes('company without balance')) {
+    return 'Empresa sin saldo';
+  }
+
+  // ----- Duplicados -----
+  if (m.includes('tsn duplicado') || m.includes('duplicate tsn')) {
+    return 'Operación repetida';
+  }
+
+  return msg || 'Dato incorrecto';
+}
+
+  private canRetryPromptError(message: string, field?: string): boolean {
+    const m = String(message || '').toLowerCase();
+    const f = String(field || '').toLowerCase();
+
+    if (m.includes('bloqueada') || m.includes('demasiados intentos') || m.includes('tps')) return false;
+    if (m.includes('sitio no autorizado')) return false;
+    if (m.includes('combustible no autorizado')) return false;
+    if (m.includes('saldo insuficiente')) return false;
+    if (m.includes('empresa sin saldo')) return false;
+
+    if (f.includes('pin') || f === 'vehicle_id' || this.isOdometerField(f) || f === 'engine_hours') {
+      return true;
+    }
+
+    return false;
+  }
+
+  private openRetryDialog(message: string, field: string, canRetry: boolean) {
+    this.retryDialogMessage = message;
+    this.retryDialogField = field;
+    this.retryDialogCanRetry = canRetry;
+    this.retryDialogOpen = true;
+  }
+
+  async retryDialogConfirm() {
+    this.retryDialogOpen = false;
+
+    if (!this.retryDialogCanRetry) {
+      await this.resetToScan(true);
+      return;
+    }
+
+    // misma lectura, nueva operación
+    this.operation_id = opId();
+    this.tx_token = '';
+    this.authorization_code = '';
+    this.authorized_amount = 0;
+
+    this.promptError = '';
+    this.promptValue = '';
+    this.inputArmed = false;
+    this.promptOpen = true;
+
+    // deja al usuario volver a capturar el mismo campo
+    if (this.promptIndex > 0) {
+      this.promptIndex = this.promptIndex - 1;
+    }
+
+    try { await Haptics.impact({ style: ImpactStyle.Light }); } catch {}
+  }
+
+  async retryDialogCancel() {
+    this.retryDialogOpen = false;
+    await this.resetToScan(true);
+  }
+
   async complete() {
     if (!this.tx_token || !this.authorization_code || !this.operation_id) {
       this.toast = 'Falta autorización';
@@ -790,7 +975,7 @@ export class TerminalPage implements OnInit, OnDestroy {
       const rt = String(resp?.ui?.response_text || resp?.message || '');
 
       if (rc && rc !== '00000' && rc !== 'COMPLETED') {
-        this.toast = rt || 'No se pudo completar';
+        this.toast = this.normalizeBackendPromptError(rt);
         return;
       }
 
@@ -799,7 +984,7 @@ export class TerminalPage implements OnInit, OnDestroy {
       try { await Haptics.impact({ style: ImpactStyle.Heavy }); } catch {}
     } catch (e: any) {
       const err = this.appPos.error$.value;
-      this.toast = err?.message || err?.code || e?.message || 'Error al completar';
+      this.toast = this.normalizeBackendPromptError(err?.message || err?.code || e?.message || 'Error al completar');
       this.view = 'AUTHORIZED';
       try { await Haptics.impact({ style: ImpactStyle.Medium }); } catch {}
     } finally {
@@ -807,9 +992,6 @@ export class TerminalPage implements OnInit, OnDestroy {
     }
   }
 
-  // ======================
-  // Cancel + Reset
-  // ======================
   async cancelIfActive() {
     if (!this.tx_token || !this.authorization_code || !this.operation_id) return;
     try {
